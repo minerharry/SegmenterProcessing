@@ -40,4 +40,5 @@ class CentroidStatisticsTracker(StatisticsTracker):
         
 
     def movie_end(self):
-        print(self.tracked_centroids);
+        # print(self.tracked_centroids);
+        pass;

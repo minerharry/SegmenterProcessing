@@ -1,0 +1,6 @@
+output/**
+gcp_transfer/**
+Segmentation Analysis/**
+output_files/**
+*.pyc
+__pycache__/**
