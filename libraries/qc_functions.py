@@ -17,20 +17,20 @@ def apply_qc(in_tracks:Dict[int,Dict[int,DataFrame]],
         exclude:List[Tuple[int,int]],
         minTrackLength:Union[None,int]=None,
         minTrackDisplacement:Union[None,float]=None,
-        trackInitialDelay:Union[int,None]=None,
+        initialTrackDelay:Union[int,None]=None,
         )->Tuple[Dict[int,Dict[int,int]],Dict[int,Dict[int,DataFrame]]]:
 
-    trackInitialDelay = trackInitialDelay or None
-    if trackInitialDelay is not None and trackInitialDelay < 0:
-        raise ValueError("trackInitialDelay must be nonnegative")
+    initialTrackDelay = initialTrackDelay or None
+    if initialTrackDelay is not None and initialTrackDelay < 0:
+        raise ValueError("argument initialTrackDelay must be nonnegative")
 
-    if trackInitialDelay is not None:
+    if initialTrackDelay is not None:
         if minTrackLength is not None:
-            if minTrackLength < trackInitialDelay:
+            if minTrackLength < initialTrackDelay:
                 print("Warning: initial track delay larger than minimum track length; short tracks would get swallowed by the delay. Setting mintracklength to the delay");
-                minTrackLength = trackInitialDelay
+                minTrackLength = initialTrackDelay
         else:
-            minTrackLength = trackInitialDelay;
+            minTrackLength = initialTrackDelay;
 
     
     out_tracks=copy.deepcopy(in_tracks)
@@ -114,8 +114,8 @@ def apply_qc(in_tracks:Dict[int,Dict[int,DataFrame]],
             firstframe = framec.iloc[0]
             lastframe = framec.iloc[-1]
 
-            if trackInitialDelay is not None:
-                firstframe = firstframe+trackInitialDelay;
+            if initialTrackDelay is not None:
+                firstframe = firstframe+initialTrackDelay;
 
 
             #check that input frames are in bounds

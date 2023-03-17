@@ -4,3 +4,4 @@ Segmentation Analysis/**
 output_files/**
 *.pyc
 __pycache__/**
+libraries/**
