@@ -1,11 +1,13 @@
 length := 577
 interval := 600
+quickOffset := 20
+active := 0
 
 ^+p::
 num := 0
 done := False
-sleeptime := interval/5
 while num < length and not done{
+    active := 1
     if not GetKeyState("Space") and not GetKeyState("Shift"){
         num++
         Click
@@ -15,9 +17,10 @@ while num < length and not done{
             done := True
             Break
         }
-        Sleep, sleeptime
+        Sleep, interval/5
     }
 }
+active := 0
 Return
 
 
@@ -51,4 +54,13 @@ while !complete{
     }
 }
 interval := i + 0
+Return
+
+#If active == 1
+*=::
+interval -= quickOffset
+Return
+
+*-::
+interval += quickOffset
 Return
