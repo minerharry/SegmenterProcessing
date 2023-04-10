@@ -1,4 +1,4 @@
-from filegetter import askopenfilename
+from utils.filegetter import askopenfilename
 from skimage.io import imread
 from pympler.asizeof import asizeof
 from tifffile import TiffFile

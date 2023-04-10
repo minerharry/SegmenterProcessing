@@ -54,7 +54,7 @@ def write_series(series:Iterable[Tuple[int,Iterator[np.ndarray]]],output,writerK
 
 
 if __name__ == "__main__":
-    from filegetter import askdirectory, asksaveasfilename
+    from utils.filegetter import askdirectory, asksaveasfilename
     serieses = range(1,9);
     files = {}
     parent_input = r"C:\Users\Harrison Truscott\Downloads\itsn_1_masks\Cell"

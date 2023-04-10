@@ -3,7 +3,7 @@ from typing import DefaultDict
 
 import cv2
 
-from cv2_utils import getCentroid
+from scraps.cv2_utils import getCentroid
 
 class StatisticsTracker(ABC):
     @abstractmethod

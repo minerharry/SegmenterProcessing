@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Union
 import pandas as pd
 import matplotlib.pyplot as plt
-from fetch_analysis import fetch_analysis
+from gcloud.fetch_analysis import fetch_analysis
 
 class SafeDict(dict):
     def __missing__(self, key):

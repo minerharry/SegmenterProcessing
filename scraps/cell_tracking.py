@@ -6,7 +6,7 @@ from typing import DefaultDict
 import cv2
 from abc import ABC
 import os
-import parsend
+import utils.parsend as parsend
 
 import numpy as np
 from fastprogress import progress_bar,master_bar
@@ -15,9 +15,9 @@ from centroidtracker import CentroidTracker
 import random
 from skimage.io import imread, imshow
 from skimage.exposure import rescale_intensity;
-from cv2_utils import getCentroid
-from parsend import sorted_dir
-from statistics_trackers import CentroidStatisticsTracker, StatisticsTracker
+from scraps.cv2_utils import getCentroid
+from utils.parsend import sorted_dir
+from scraps.statistics_trackers import CentroidStatisticsTracker, StatisticsTracker
 
 # T = TypeVar('T')
 

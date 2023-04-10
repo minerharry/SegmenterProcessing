@@ -1,7 +1,7 @@
 from operator import itemgetter
 
 import win32com.client
-from filegetter import askdirectory
+from utils.filegetter import askdirectory
 from pathlib import Path
 import os
 import re
