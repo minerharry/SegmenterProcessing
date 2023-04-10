@@ -3,7 +3,7 @@ from pathlib import Path
 from cv2 import detail_HomographyBasedEstimator
 import numpy as np
 from tqdm import tqdm
-import filegetter
+import filegetter as filegetter
 from skimage.io import imread,imsave
 
 

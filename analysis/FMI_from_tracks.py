@@ -1,7 +1,8 @@
 from csv import DictReader
 import math
 from typing import DefaultDict
-infile = "C:\\Users\\Harrison Truscott\\Downloads\\mov4_manual\\manualtrack_results.csv"
+from utils.filegetter import askopenfilename
+infile = askopenfilename();
 
 tracks = DefaultDict[int,list[tuple[int,int]]](lambda:[]);
 

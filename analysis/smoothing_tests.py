@@ -1,5 +1,5 @@
 import math
-from PRW_model_functions import run_PRW_sim
+from analysis.PRW_model_functions import run_PRW_sim
 import matplotlib.pyplot as plt
 import numpy as np
 

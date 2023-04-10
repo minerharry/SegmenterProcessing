@@ -4,9 +4,9 @@ root = tk.Tk()
 root.withdraw()
 
 askdirectory = filedialog.askdirectory;
-askopenfile = filedialog.askopenfile;
+askopenfilehandle = filedialog.askopenfile;
 askopenfilename = filedialog.askopenfilename;
 askopenfilenames = filedialog.askopenfilenames;
 askopenfiles = filedialog.askopenfiles;
-asksaveasfile = filedialog.asksaveasfile;
+asksaveasfilehandle = filedialog.asksaveasfile;
 asksaveasfilename = filedialog.asksaveasfilename;
