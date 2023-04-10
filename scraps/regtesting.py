@@ -58,7 +58,7 @@ def regex_to_map(reg_str:str,targets:Sequence[str],keys:Union[Collection[str],Co
   return tuple_to_ndim_dict(out);
 
 if __name__ == "__main__":
-    from utils.filegetter import askdirectory
+    from filegetter import askdirectory
     import os
     files = filter(lambda x: not x.endswith(".nd"),os.listdir(askdirectory()))
     regstr = r"p_s(\d+)_t(\d+).*"

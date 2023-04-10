@@ -1,7 +1,7 @@
 import os
 
 from matplotlib.axes import Axes
-from utils.filegetter import askdirectory
+from filegetter import askdirectory
 from videofig import videofig as vidfig
 from skimage.io import imread
 import re

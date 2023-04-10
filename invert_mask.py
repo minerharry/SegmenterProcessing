@@ -1,6 +1,6 @@
 import numpy as np
 from skimage.io import imread,imsave,imshow
-from utils.filegetter import askopenfilename,asksaveasfilename
+from filegetter import askopenfilename,asksaveasfilename
 inmask = askopenfilename();
 # outmask = asksaveasfilename();
 image = imread(inmask);
