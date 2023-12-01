@@ -54,10 +54,10 @@ def write_series(series:Iterable[Tuple[int,Iterator[np.ndarray]]],output,writerK
 
 
 if __name__ == "__main__":
-    from filegetter import askdirectory, asksaveasfilename
-    serieses = range(1,9);
+    from utils.filegetter import askdirectory, asksaveasfilename
+    serieses = [1];
     files = {}
-    parent_input = r"C:\Users\Harrison Truscott\Downloads\itsn_1_masks\Cell"
+    parent_input = r"C:\Users\Harrison Truscott\Documents\GitHub\cell-tracking\gcp_transfer\images\2023.4.2 OptoTiam Exp 53"
     exclude = [];
     basename = "p";
     for series in serieses:
@@ -68,7 +68,7 @@ if __name__ == "__main__":
         files[series] = input_files;
 
 
-    output_file = "C:/Users/Harrison Truscott/Downloads/cellmasks.tif"
+    output_file = "C:/Users/Harrison Truscott/Downloads/53_mov1.tif"
     if output_file == '':
         print("no output file selected >:(");
         exit();

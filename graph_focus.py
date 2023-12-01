@@ -1,7 +1,7 @@
 from operator import itemgetter
 
 import win32com.client
-from filegetter import askdirectory
+from utils.filegetter import askdirectory
 from pathlib import Path
 import os
 import re
@@ -9,14 +9,15 @@ from PIL import Image
 from PIL.TiffTags import TAGS
 import xml.etree.ElementTree as ET
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 if __name__ == "__main__":
     # imdir = Path(askdirectory());
-    imdir = "F:/Lab Data/2023.2.3 OptoITSN Test 44/2023.2.3 OptoITSN Test 44"
+    imdir = r"F:\Lab Data\2023.10.3 OptoTiam Exp 68\2023.10.3 OptoTiam Exp 68"
     imdir = Path(imdir);
     # movie = input("movie number? ");
 
-    for movie in range(1,17):
+    for movie in tqdm(range(1,17)):
 
         files = os.listdir(imdir);
         try:
@@ -37,7 +38,7 @@ if __name__ == "__main__":
 
 
         zs = [];
-        for _,f in movie_files:
+        for _,f in tqdm(movie_files,leave=False):
             with Image.open(imdir/f) as img:
                 meta_dict = {TAGS[key] : img.tag[key] for key in img.tag.keys()}
             metaxml = meta_dict["ImageDescription"][0];
@@ -46,6 +47,7 @@ if __name__ == "__main__":
             e = children[0]
             z = float(e.attrib['value']);
             zs.append(z);
-        plt.title(f"stage {movie}")
+        
+        plt.figure(f"stage {movie}")
         plt.plot(zs);
-        plt.show();
+    plt.show();

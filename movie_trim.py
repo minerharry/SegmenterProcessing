@@ -3,7 +3,7 @@ from pathlib import Path
 import shutil
 
 from tqdm import tqdm
-from filegetter import askdirectory
+from utils.filegetter import askdirectory
 
 name = "p_s{0}_t{1}.TIF"
 
