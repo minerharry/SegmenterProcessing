@@ -39,13 +39,20 @@ def cachewrap(f:Callable[P,R|None],blanktype:Type[T])->Callable[P,R|T]:
     def loc_cache(*args,allow_blank=False,**kwargs)->R: ...
     @overload
     def loc_cache(*args,allow_blank=True,**kwargs)->R|T: ...
-    def loc_cache(*args,initialdir=None,initialfile=None,key=None,allow_blank=False,skip_popup=False,**kwargs)->R|T:
+    def loc_cache(*args,initialdir=None,initialfile=None,key=None,mangle_key=False,allow_blank=False,skip_popup=False,**kwargs)->R|T:
         import sys
         call_location = os.path.abspath(sys.argv[0])
         func_name = f.__name__
         if initialdir and initialfile:
             if os.path.dirname(initialfile) != initialdir:
                 raise ValueError("Both initialfile and initialdir specified, but initialfile is not a file in initialdir. Either ensure initialfile is a file in initialdir, or (recommended) only supply one of these arguments.")
+        
+        if "title" not in kwargs and key: ##store window title, need to do this before mangling
+            kwargs["title"] = key 
+        
+        if mangle_key:
+            key = f"__{call_location}_{func_name}_{key}";
+
         loc = initialfile if initialfile else initialdir
         if not loc:
             with shelve.open(cache_location) as cache:
@@ -67,8 +74,7 @@ def cachewrap(f:Callable[P,R|None],blanktype:Type[T])->Callable[P,R|T]:
         if loc is not None and (skip_popup or _skip_cached_popups):
             return loc #skip the popup and return the cached value
         
-        if "title" not in kwargs and key:
-            kwargs["title"] = key
+        
         if loc is None:
             res = f(*args,**kwargs);
         elif os.path.isdir(loc):
