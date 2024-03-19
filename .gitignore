@@ -12,6 +12,7 @@ gradients/**
 caches/**
 associations/cache/**
 labeledmasks/**
+TIRF_output_test/**
 gcp_transfer/**
 out/**
 labeledmasks/**
