@@ -1,11 +1,73 @@
-import os
+from abc import abstractmethod
 from pathlib import Path
-from typing import Iterable
+from typing import Any
 from bs4 import BeautifulSoup
-import numpy as np
 from tifffile import TiffFile
-
 from utils.bftools import get_omexml_metadata
+from utils.metadata import Metadata
+
+class OMEMetadata(Metadata):
+    def __init__(self,file:TiffFile|str|Path|None=None,xml:BeautifulSoup|Path|str|None=None) -> None:
+        self.file = file;
+        self.xml = xml;
+        self.parse_omexml_metadata();
+
+    def __getitem__(self, key: str) -> Any:
+        raise AttributeError();
+
+    size:tuple[float,float];
+    sizeunits: tuple[str,str];
+
+    position:tuple[float,float];
+    positionunits:tuple[str,str];
+
+    @property
+    def PhysicalSizeX(self):
+        return self.size[0];
+    @property
+    def PhysicalSizeY(self):
+        return self.size[1];
+
+    @property
+    def PhysicalSizeXUnit(self):
+        return self.sizeunits[0];
+    @property
+    def PhysicalSizeYUnit(self):
+        return self.sizeunits[1];
+
+    @property
+    def PositionX(self):
+        return self.position[0];
+    @property
+    def PositionY(self):
+        return self.position[1];
+
+    @property
+    def PositionXUnit(self):
+        return self.positionunits[0];
+
+    @property
+    def PositionYUnit(self):
+        return self.positionunits[1];
+
+    def _get_omexml_metadata(self)->BeautifulSoup:
+        return parse_ome_metadata(file=self.file,xml=self.xml);
+
+    def parse_omexml_metadata(self):
+        xml = self._get_omexml_metadata()
+        image = xml.find_all("Image")[0] #TODO: Multi-image support??
+        pixels = image.find("Pixels")
+        self.size = (float(pixels["PhysicalSizeX"]),float(pixels["PhysicalSizeY"]))
+        self.sizeunits = (pixels["PhysicalSizeXUnit"],pixels["PhysicalSizeYUnit"])
+
+        plane = pixels.find("Plane") #TODO: Multi-plane support??
+        
+        self.position = (float(plane["PositionX"]),float(plane["PositionY"]))
+        self.positionunits = (plane["PositionXUnit"],plane["PositionYUnit"])
+        assert self.sizeunits == self.positionunits, "Plane and Pixel units don't match! Unit conversions not supported"
+
+
+
 
 def parse_ome_metadata(file:TiffFile|str|Path|None=None,xml:BeautifulSoup|Path|str|None=None):
     # print(file)
@@ -27,58 +89,3 @@ def parse_ome_metadata(file:TiffFile|str|Path|None=None,xml:BeautifulSoup|Path|s
         if isinstance(xml,str):
             return BeautifulSoup(xml,features="lxml-xml")
     raise Exception(f"Could not parse xml data for file {file} and xml {xml}");
-
-
-def pixel_to_absolute_coordinates(pos:tuple[float,float]|Iterable[tuple[float,float]]=(0,0),meta:BeautifulSoup|Path|str|None=None,file:TiffFile|str|Path|None=None):
-    """Convert pixel coordinates to coordinates in image space using ome metadata. 
-    If no pos is specified, returns coordinates of top left of image.
-    Returns tuple ((x,y),(xunit,yunit)); xunit,yunit are strings"""
-    meta = parse_ome_metadata(file=file,xml=meta);
-        
-    image = meta.find_all("Image")[0] #TODO: Multi-image support??
-    pixels = image.find("Pixels")
-    pixel_scale = [float(pixels["PhysicalSizeX"]),float(pixels["PhysicalSizeY"])]
-    pixel_units = [pixels["PhysicalSizeXUnit"],pixels["PhysicalSizeYUnit"]]
-
-    plane = pixels.find("Plane") #TODO: Multi-plane support??
-    
-    image_pos = [float(plane["PositionX"]),float(plane["PositionY"])]
-    image_units = [plane["PositionXUnit"],plane["PositionYUnit"]]
-    assert image_units == pixel_units, "Plane and Pixel units don't match!"
-
-    result_pos = np.add(image_pos,np.multiply(pixel_scale,pos)) #result = image_pos + pixel_scale*pos. Should broadcast naturally?
-    return result_pos,image_units
-
-def get_pixel_scale(meta:BeautifulSoup|Path|str|None=None,file:TiffFile|str|Path|None=None):
-    meta = parse_ome_metadata(file=file,xml=meta);
-        
-    image = meta.find_all("Image")[0] #TODO: Multi-image support??
-    pixels = image.find("Pixels")
-    pixel_scale = (float(pixels["PhysicalSizeX"]),float(pixels["PhysicalSizeY"]))
-    pixel_units = (pixels["PhysicalSizeXUnit"],pixels["PhysicalSizeYUnit"])
-    return pixel_scale,pixel_units
-
-def absolute_coordinate_to_pixels(pos:tuple[float,float]|Iterable[tuple[float,float]]=(0,0),meta:BeautifulSoup|Path|str|None=None,file:TiffFile|str|Path|None=None):
-    """Convert pixel coordinates to coordinates in image space using ome metadata. 
-    If no pos is specified, returns pixel value of (0,0) in absolute coordinates
-    ASSUMES INPUT IS IN CORRECT UNITS!!!!
-    Returns length-2 array [x,y] in pixelspace, or list of arrays [[x1,y1],[x2,y2],...] if input is list of points"""
-    meta = parse_ome_metadata(file=file,xml=meta);
-        
-    pos = np.array(pos); #works with single point or list of points thanks to numpy broadcasting
-        
-    image = meta.find_all("Image")[0] #TODO: Multi-image support??
-    pixels = image.find("Pixels")
-    pixel_scale = np.array([float(pixels["PhysicalSizeX"]),float(pixels["PhysicalSizeY"])])
-    pixel_units = [pixels["PhysicalSizeXUnit"],pixels["PhysicalSizeYUnit"]]
-
-    plane = pixels.find("Plane") #TODO: Multi-plane support??
-    
-    image_pos = np.array([float(plane["PositionX"]),float(plane["PositionY"])])
-    image_units = [plane["PositionXUnit"],plane["PositionYUnit"]]
-    assert image_units == pixel_units, "Plane and Pixel units don't match!"
-
-    result_pos = np.divide(np.subtract(pos, image_pos),pixel_scale) #result = (pos - image_pos) / pixel_scale. Should broadcast naturally?
-    return result_pos
-
-    

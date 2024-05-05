@@ -1,8 +1,11 @@
 from copy import copy
 import functools
+from genericpath import exists
 import inspect
+from io import BytesIO
 import itertools
-import json
+import sys
+import json_tricks as json
 from math import ceil
 import os
 from pathlib import Path
@@ -32,7 +35,8 @@ from json_tricks import dump as jdump, load as jload
 import tifffile
 import xtiff #tifffile wrapper specifically for multichannel / stacks
 from utils import inquire
-from utils.ome import absolute_coordinate_to_pixels, pixel_to_absolute_coordinates,get_pixel_scale
+from utils.bftools import get_omexml_metadata
+from utils.metadata import Metadata, absolute_coordinate_to_pixels, pixel_to_absolute_coordinates,get_pixel_scale
 
 import numpy as np
 import cv2 as cv
@@ -41,6 +45,8 @@ from tqdm import tqdm
 from nptyping import NDArray,Shape,Float
 
 from skimage.io import imread,imsave
+
+from utils.ome import OMEMetadata
 
 ## ensures the clicker can only have (at most) one point. it can also have zero!
 def singlify_clicker(c:clicker):
@@ -213,9 +219,9 @@ class PhaseTIRFCalibration:
         return dst
 
     ### ONLY FUNCTION WHICH RELIES ON ARBITRARY PIXEL -> COORDINATE TRANSFORMAITON
-    def transform_pixels(self,to:Literal['phase','tirf']='phase',*points:tuple[float,float],meta:BeautifulSoup|Path|str|None=None,file:TiffFile|str|Path=None)->Sequence[NDArray[Shape["2"],Float]]:
+    def transform_pixels(self,to:Literal['phase','tirf']='phase',*points:tuple[float,float],meta:Metadata)->Sequence[NDArray[Shape["2"],Float]]:
         if to == "phase":
-            abs_points,units = pixel_to_absolute_coordinates(points,meta=meta,file=file)
+            abs_points,units = pixel_to_absolute_coordinates(meta,points)
         else:
             abs_points = np.array(points) #phase coords = phase pixels
         
@@ -224,7 +230,7 @@ class PhaseTIRFCalibration:
         # print(dst)
 
         if to == "tirf":
-            dst = absolute_coordinate_to_pixels(dst,meta=meta,file=file)
+            dst = absolute_coordinate_to_pixels(meta,dst)
         # print(dst)
 
         return dst
@@ -235,7 +241,8 @@ class PhaseTIRFCalibration:
     
 
 def main(force_calibration:bool=False,continue_calibration:bool=False):
-    parent_folder = Path(r"C:\Users\Harrison Truscott\OneDrive - University of North Carolina at Chapel Hill\Bear Lab\optotaxis calibration\data\tirf calibration local\2024.2.23 OptoITSN Fix Test 1\3 notches")
+    parent_folder = Path(r"C:\Users\Harrison Truscott\OneDrive - University of North Carolina at Chapel Hill\Bear Lab\optotaxis calibration\data\tirf calibration local\2024.2.23 OptoITSN Fix Test 1")
+    parent_folder = parent_folder/"3 notches"
     phase_parent_folder = parent_folder
     phase_folder = phase_parent_folder/"Phase"
     gradient_folder = phase_parent_folder/"Gradient"
@@ -246,6 +253,7 @@ def main(force_calibration:bool=False,continue_calibration:bool=False):
     TIRF_folder = parent_folder/("TIRF")
     calibration_folder = TIRF_folder/"Calibration"
     tirf_images = TIRF_folder/"Images"
+    # tirf_images = TIRF_folder/"Export_test"
 
     calib_file = (calibration_folder/"calibration.json")
 
@@ -296,37 +304,51 @@ def main(force_calibration:bool=False,continue_calibration:bool=False):
 
 
         calib_image:str|Path = ""
-        calib_meta:str|Path|None = None
+        calib_meta:Metadata = None
         calib_name:str = ""
         tirf_im:AxesImage|None = None
+
+        def get_tirf_image(name:str|Path):
+            calib_image = Path(name)
+            ##make calib image absolute
+            if not calib_image.is_absolute() and (TIRF_folder/calib_image).exists():
+                #look in calibration folder before local/absolute
+                calib_image = TIRF_folder/calib_image
+            return calib_image;
+
+        def get_meta(file:str|Path):
+            file = Path(file);
+            if (cm := file.with_suffix(".xml")).exists():
+                return OMEMetadata(file=file,xml=cm);
+            return OMEMetadata(file);
+    
+        def get_calib_name(file:str|Path):
+            file = Path(file);
+            try:
+                #as_posix is platform-agnostic and easy
+                calib_name = (file.relative_to(TIRF_folder)).as_posix()
+            except ValueError as v:
+                print(v)
+                calib_name = (file).as_posix() 
+            return calib_name
+
+
         def switch_image(cimage:str|Path,zoom:bool=True,custom_name:str|None=None,custom_title:str|None=None):
             clear_test_points()
             clear_bboxes('tirf')
             nonlocal calib_image,calib_meta,calib_name,tirf_im,tirf
             
-            calib_image = Path(cimage)
+            calib_image = get_tirf_image(cimage);
             
-            ##make calib image absolute
-            if not calib_image.is_absolute() and (TIRF_folder/calib_image).exists():
-                #look in calibration folder before local/absolute
-                calib_image = TIRF_folder/calib_image
-            
-            if (cm := calib_image.with_suffix(".xml")).exists():
-                calib_meta = cm;
-            else:
-                calib_meta = None;
+            calib_meta = get_meta(calib_image)
             
             ##make calib name relative to parent folder if possible
             if custom_name:
                 print("using custom calibration key:",custom_name)
                 calib_name = custom_name
             else:
-                try:
-                    #as_posix is platform-agnostic and easy
-                    calib_name = (calib_image.relative_to(TIRF_folder)).as_posix()
-                except ValueError as v:
-                    print(v)
-                    calib_name = (calib_image).as_posix() 
+                calib_name = get_calib_name(calib_image)
+                
             tirf = imread(calib_image)
             
             if tirf_im:
@@ -344,7 +366,12 @@ def main(force_calibration:bool=False,continue_calibration:bool=False):
         def get_calib_images():
             return list(calibration_folder.glob("*.tif"))
         
-
+        def get_bright_cellnums():
+            bcells = (TIRF_folder/"brightcells.txt");
+            if not bcells.exists():
+                raise FileNotFoundError("brightcells.txt does not exist in tirf folder");
+            with open(bcells,"r") as f:
+                return list(set([int(i.strip()) for i in f.readlines() if i.strip() != ''])); #only return unique cellnums
         
         tirf_type_num_map:dict[Literal["bf","tirf","epi"],str] = {"bf":"01","tirf":"02","epi":"03"}
         def get_tirf_images(type:Literal["bf","tirf","epi"]="tirf"):
@@ -436,7 +463,7 @@ def main(force_calibration:bool=False,continue_calibration:bool=False):
 
         def make_calibdata(*points:tuple[tuple[float,float],tuple[float,float]]):
             res:list[CalibData] = []
-            tirf_pos,_ = pixel_to_absolute_coordinates([p[1] for p in points],file=calib_image,meta=calib_meta)
+            tirf_pos,_ = pixel_to_absolute_coordinates(calib_meta,[p[1] for p in points])
             for (pp,tp),ta in zip(points,tirf_pos):
                 res.append(CalibData(tuple(pp),tuple(pp),tuple(tp),tuple(ta)))
             return res
@@ -518,7 +545,7 @@ def main(force_calibration:bool=False,continue_calibration:bool=False):
 
         def _test_point(points:Iterable[tuple[float,float]],source:Literal['tirf','phase']):
             dest = ImOpt.other(source)
-            transformed = Calibration.transform_pixels(dest,*points,file=calib_image,meta=calib_meta)
+            transformed = Calibration.transform_pixels(dest,*points,meta=calib_meta)
             axes = {"phase":pax,"tirf":tax}
             for p,t in zip(points,transformed):
                 spoint = axes[source].scatter(p[0],p[1],color='blue',marker='x')
@@ -538,18 +565,25 @@ def main(force_calibration:bool=False,continue_calibration:bool=False):
 
         bboxes:dict[Literal['tirf','phase'],list[tuple[Polygon,Text]]] = {'tirf':[],'phase':[]}
         
-        def get_bbox(dest:Literal['tirf','phase']='phase',sourceim:np.ndarray|None=None):
-            if Calibration.get_transformation_matrix(dest) is None:
-                return None
+        def get_bbox(dest:Literal['tirf','phase']='phase',sourceim:np.ndarray|tuple[int,int]|None=None,meta:Metadata|None=None):
+            if meta is None: meta = calib_meta;
+            if Calibration.get_transformation_matrix(dest) is None: return None #not enough points for transformation
             source = ImOpt.other(dest)
+            shape:tuple[int,...]
             if sourceim is None:
-                sourceim = {'phase':phase,'tirf':tirf}[source]
-            corners = [(0,0),(sourceim.shape[0]-1,0),(sourceim.shape[0]-1,sourceim.shape[1]-1),(0,sourceim.shape[1]-1)]
-            transformed = Calibration.transform_pixels(dest,*corners,file=calib_image,meta=calib_meta)
+                shape = {'phase':phase,'tirf':tirf}[source].shape;
+            elif isinstance(sourceim,tuple):
+                shape = sourceim;
+            else:
+                shape = sourceim.shape;
+            corners = [(0,0),(shape[0]-1,0),(shape[0]-1,shape[1]-1),(0,shape[1]-1)]
+            transformed = Calibration.transform_pixels(dest,*corners,meta=meta)
             return Polygon(transformed,closed=False);
 
-        def draw_bbox(dest:Literal['tirf','phase']='phase',color="yellow",thickness="3",label:str|None = None,do_label=True):
-            p = get_bbox(dest)
+        def draw_bbox(dest:Literal['tirf','phase']='phase',color="yellow",thickness="3",image=None,label:str|None = None,do_label=True,
+                      meta:Metadata|None=None,sourceim:np.ndarray|tuple[int,int]|None=None):
+            if (meta is None): meta = calib_meta;
+            p = get_bbox(dest,sourceim=sourceim,meta=meta)
             if p is None:
                 return (None,None)
             p = Polygon(p.get_xy(),closed=True,color=color,linewidth=3,fill=False)
@@ -564,6 +598,28 @@ def main(force_calibration:bool=False,continue_calibration:bool=False):
             fig.canvas.draw_idle()
             return (p,t)
         
+        def draw_all_bboxes(dest:Literal['tirf','phase'],images:list[Path|str|int]|None=None,**kwargs):
+            if images is None:
+                images = list(get_all_tirf_nums());
+            res = []
+            for im in tqdm(images):
+                if (isinstance(im,int)):
+                    impath = get_tirf_image(get_cell_num(im,'tirf'));
+                else:
+                    impath = get_tirf_image(im);
+                
+                label:str
+                if isinstance(im,int):
+                    label = f"cell{im}";
+                else:
+                    from IPython import embed; embed()
+                    label = get_calib_name(impath)
+                meta = get_meta(impath);
+                shape = imread(impath).shape[:2];
+                res.append(draw_bbox(dest,sourceim=(shape[0],shape[1]),meta=meta,label=label));
+            return res;
+
+
         def clear_bboxes(dest:Literal['tirf','phase']):
             for p,t in bboxes[dest]:
                 p.remove()
@@ -651,8 +707,9 @@ def main(force_calibration:bool=False,continue_calibration:bool=False):
             src_bbox:Polygon;
             if dest_size is None:
                 src_bbox = get_bbox("phase"); ##NOTE: at first this got the tirf bbox and converted back to phase but the tirf bbox uses the entire phase image lmao
-            elif not isinstance(dest_size,tuple):
-                dest_size = (int(dest_size),int(dest_size));
+            else:
+                if not isinstance(dest_size,tuple):
+                    dest_size = (int(dest_size),int(dest_size));
                 boundss = [(dest_position[i]-dest_size[i]/2,dest_position[i]+dest_size[i]/2) for i in (0,1)];
                 
                 corners = list(itertools.product(*boundss)); 
@@ -661,7 +718,7 @@ def main(force_calibration:bool=False,continue_calibration:bool=False):
                 from IPython import embed;
                 assert len(dest_bbox.get_xy()) == 4, embed();
             
-                src_bbox = Polygon(Calibration.transform_pixels("phase",*dest_bbox.get_xy(),file=calib_image,meta=calib_meta),closed=False);
+                src_bbox = Polygon(Calibration.transform_pixels("phase",*dest_bbox.get_xy(),meta=calib_meta),closed=False);
                 #NOTE: the absolute position of the dest_bbox is going to be wonky, but it won't matter because get_warped_image doesn't care about 
             
             
@@ -694,7 +751,6 @@ def main(force_calibration:bool=False,continue_calibration:bool=False):
 
             out = get_warped_image(arr.astype(float),src_bbox,upscale,smoothing);
             
-        
             #stats
             ##NOTE: The post stats are easy because the whole image is relevant. If the source image
             clip_mask = np.zeros_like(arr,dtype=np.uint8); #for some godforsaken reason, opencv doesn't do antialiasing unless 8bit
@@ -719,7 +775,7 @@ def main(force_calibration:bool=False,continue_calibration:bool=False):
 
             data:dict[str,dict[str,Any]] = {
                 "Filename":{
-                    pre_key:pre_path,clip_key:clip_path,post_key:post_path,
+                    pre_key:str(pre_path),clip_key:str(clip_path),post_key:str(post_path),
                 },
                 "Average":{
                     pre_key:arr.mean(),clip_key:clipped.sum()/clip_mask.sum(),post_key:out.mean()
@@ -740,34 +796,60 @@ def main(force_calibration:bool=False,continue_calibration:bool=False):
 
 
         ## these export functions are sort of inconsistent since they were made at different times
-        def export_images_stacked(dest_folder:str|Path="stacked",gradient_smoothing:int|None=10):
+        def export_images_stacked(dest_folder:str|Path="stacked",
+                                  gradient_smoothing:int|None=10,
+                                  include_bf:bool=True,
+                                  calibrate:Path|str|None="calibration",
+                                  calibrate_image_size:int|tuple[int,int]|None=None,
+                                  cells:list[int]|None=None):
             """Populated output folder with tiff stacks with the following channels:
-                1: BF
+                1: Gradient, warped to match the TIRF
                 2: TIRF
                 3: EPI
-                4: Gradient, warped to match the TIRF"""
-            dest_folder = Path(dest_folder)
-            if not dest_folder.is_absolute():
-                dest_folder = parent_folder/dest_folder;
+                4 (if include_bf is true, default): BF
+                
+                Automatically upscales on gradient image warp because dimensions need to match
+                
+                If calibrate is not None, will run calibrate_image_export into given folder, relative to 
+                dest_folder if not absolute. Will use a image with size calibrate_image_size, or the size of currently selected
+                tirf image if not specified. By default uses a fillvalue of 100.
+                """
+            
+            dest_folder = parent_folder/dest_folder; #if dest_folder is absolute this leaves it unchanged
             print(f"exporting stacked images to {dest_folder}")
             dest_folder.mkdir(exist_ok=True);
+            if cells is None:
+                cells = get_all_tirf_nums();
+
+            if calibrate is not None:
+                calibrate = dest_folder/calibrate
+                if calibrate_image_size is None:
+                    calibrate_image_size = tirf.shape;
+                elif (isinstance(calibrate_image_size,int)):
+                    calibrate_image_size = (calibrate_image_size,calibrate_image_size);
+                
+                calibrate_image_export(calibrate,calibrate_image_size,fillvalue=100,upscale=True,smoothing=gradient_smoothing);    
+            
             def rescale(im:np.ndarray):
-                # print(im.dtype);
-                return rescale_intensity(im.astype(float),out_range=np.uint16).astype(np.uint16);
+                # return im
+                # # print(im.dtype);
+                return rescale_intensity(im.astype(float),in_range="dtype",out_range=np.uint8).astype(np.uint8);
+
             with plt.ioff():
-                for cell_num in tqdm(get_all_tirf_nums()):
+                for cell_num in tqdm(cells):
                     switch_cell_num(cell_num);
                     
-                    images = [imread(get_cell_num(cell_num,ctype)) for ctype in ['bf','tirf','epi']] + [get_warped_image("gradient",upscale=True,smoothing=gradient_smoothing)]; #TODO: VERIFY PIXEL VALUE FIDELITY - DOES IT PRESERVE THE AVERAGE?
-                    # print(images[0].shape)
-                    images = [rescale(im) for im in images];
+                    images = [get_warped_image("gradient",upscale=True,smoothing=gradient_smoothing,meta=calib_meta)]  \
+                            + [imread(get_cell_num(cell_num,ctype)) for ctype in (['tirf','epi'] + ['bf'] if include_bf else [])];
+                    # images[3] = rescale_intensity(images[3],out_range=np.uint8) #rescale for visuals
+                    # images[:3] = [(i/16.0).astype(np.uint8) for i in images[:3]] #12bit -> 8bit for tirf & metamorph
+
                     images = np.array(images);
-                    # print(images.dtype);
                     images = images.astype(np.uint16);
-                    # print(images.shape);
                     outname = dest_folder/f"cell{cell_num}_stack.tiff";
-                    # xtiff.to_tiff(images,outname);
-                    tifffile.imwrite(outname,images);
+
+                    tifffile.imwrite(outname,images,photometric="minisblack",shape=(4,2048,2048));
+                    # xtiff.to_tiff(images,outname,channel_names="CYX"); #this means multichannel tiff
 
 
         def export_images(dest_folder:str|Path):
@@ -856,7 +938,11 @@ def main(force_calibration:bool=False,continue_calibration:bool=False):
 
         ### Realistically, there is a maximum accuracy that you can get with whole-field-of-view calibration. Ideally each image should have a 
         ### fine-tuning step for precise calibration of phase and TIRF. the Gradient is noisy enough though that it's probably fine for gradient analysis
-        def get_warped_image(src:Literal['phase','gradient']|np.ndarray,bbox:Polygon|None=None,upscale:bool|tuple[int,int]=False,smoothing:int|None=None):
+        def get_warped_image(src:Literal['phase','gradient']|np.ndarray,
+                             bbox:Polygon|None=None,
+                             upscale:bool|tuple[int,int]=False,
+                             smoothing:int|None=None,
+                             meta:Metadata|None=None):
             ###GOAL: Extract the tirf FOV from phase
             ### Difficult because the tirf->phase bounding box is not necessarily axis-aligned, so I need to both do a warp with the transformation matrix
             ### And extract the axis-aligned components
@@ -868,9 +954,11 @@ def main(force_calibration:bool=False,continue_calibration:bool=False):
             ## apply transformation to image, using TIRF image bounds as size
             ## If specified, apply a blur to the image based on the smoothing value
             ### this should return the proper image... hopefully
+            if meta is None:
+                meta = calib_meta;
 
             if not bbox:
-                bbox = get_bbox('phase');
+                bbox = get_bbox('phase',meta=meta);
                 assert bbox is not None
                         
             if isinstance(src,np.ndarray):
@@ -883,7 +971,6 @@ def main(force_calibration:bool=False,continue_calibration:bool=False):
                 raise ValueError(src)
             sliced, origin = slice_bbox(to_slice,bbox);
             offset = np.subtract(origin,bbox.get_xy()[0]); #slice top - bounds top; applied to (bounds top - slice top), e.g. coordinates within the slice, will be zero
-            print(offset)
 
             pre_translate = np.array([
                 [1, 0, offset[0]],
@@ -907,13 +994,7 @@ def main(force_calibration:bool=False,continue_calibration:bool=False):
             dest_corners = Calibration.transform_points("tirf",bbox.get_xy())
             dest_shape = (int(np.max(dest_corners[:,0])-np.min(dest_corners[:,0])),int(np.max(dest_corners[:,1])-np.min(dest_corners[:,1])))
 
-            print(sliced);
-            print(composed);
-            print(dest_shape);
-
-
-            warped = cv.warpPerspective(sliced,composed,dest_shape)
-            
+            warped = cv.warpPerspective(sliced,composed,dest_shape)            
             
             if upscale:
                 dest_shape = tirf.shape
@@ -921,7 +1002,7 @@ def main(force_calibration:bool=False,continue_calibration:bool=False):
                     dest_shape = upscale;
 
                 ##upscale: make the warped image the same size as the TIRF image
-                scale = get_pixel_scale(file=calib_image,meta=calib_meta)[0]
+                scale = get_pixel_scale(meta=meta)[0]
                 assert all([t*s - w < 2 for t,s,w in zip(dest_shape,scale,warped.shape)]),(dest_shape,scale,warped.shape)
                 #assert that the difference in size is close to that predicted by the pixel scale!
 
@@ -929,6 +1010,8 @@ def main(force_calibration:bool=False,continue_calibration:bool=False):
 
             if smoothing:
                 warped = cv.GaussianBlur(warped,(0,0),sigmaX=smoothing);
+            
+            warped = warped.astype(to_slice.dtype)
 
             return warped                
         
