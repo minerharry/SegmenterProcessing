@@ -3,10 +3,8 @@ from typing import Union
 import pandas as pd
 import matplotlib.pyplot as plt
 from gcloud.fetch_analysis import fetch_analysis
+from utils.safedict import SafeDict
 
-class SafeDict(dict):
-    def __missing__(self, key):
-        return '{' + key + '}'
         
 def format_path(path:Union[str,Path],collection:Union[bool,None]=None,movie:Union[int,None]=None,experiment:Union[str,None]=None,**kwargs):
   is_path = isinstance(path,Path);

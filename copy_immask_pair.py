@@ -1,22 +1,30 @@
 from pathlib import Path
 from shutil import copy
+import shutil
 
-masksdir = "C:/Users/Harrison Truscott/Downloads/itsn_2_masks/Cell"
-imsdir = "C:/Users/Harrison Truscott/OneDrive - University of North Carolina at Chapel Hill/Bear Lab/2023.01.02 ITSNAIOopto2/Original"
+from tqdm import tqdm
+from utils.filegetter import adir
+masksdir = adir(key="masks") #"C:/Users/Harrison Truscott/Downloads/itsn_2_masks/Cell"
 masksdir = Path(masksdir);
-imsdir = Path(imsdir);
-outiter = 1
-outround = 10;
+outmasksdir = Path(adir(key="outmasks"))
 
-s = 7
-t = 47;
-copyname = f"p_s{s}_t{t}.TIF"
-outname = f"itsn2_s{s}_t{t}.TIF";
+copy_im = False
+if copy_im:
+    imsdir = adir(key="images") #"C:/Users/Harrison Truscott/OneDrive - University of North Carolina at Chapel Hill/Bear Lab/2023.01.02 ITSNAIOopto2/Original"
+    imsdir = Path(imsdir);
+    outimsdir = Path(adir(key="outimages"))
 
-basefolder = "C:/Users/Harrison Truscott/OneDrive - University of North Carolina at Chapel Hill/Bear Lab/optotaxis calibration/data/segmentation_iteration_testing"
-roundfolder = Path(basefolder)/f"iter{outiter}"/f"round{outround}";
-mout = roundfolder/"input";
-imout = roundfolder/"images";
-
-copy(masksdir/copyname,mout/outname);
-copy(imsdir/copyname,imout/outname);
+s = 4
+for t in tqdm(range(1,30,4)):
+    # t = 47;
+    copyname = f"p_s{s}_t{t}.TIF"
+    outname = f"0607_s{s}_t{t}.TIF";
+    try:
+        copy(masksdir/copyname,outmasksdir/outname);
+    except shutil.SameFileError:
+        pass
+    if copy_im:
+        try:
+            copy(imsdir/copyname,outimsdir/outname);
+        except shutil.SameFileError:
+            pass
