@@ -1,5 +1,5 @@
 import glob
-from typing import Any, Iterable, Iterator, Tuple
+from typing import Any, Collection, Iterable, Iterator, Protocol, Sized, Tuple
 import numpy as np
 import tifffile
 import fnmatch
@@ -7,6 +7,19 @@ import re
 import os
 # from fastprogress import progress_ba
 from tqdm import tqdm
+
+class Sizeable[T](Sized,Iterable[T],Protocol):
+    ...
+
+class Ensized[T](Sizeable[T]):
+    def __init__(self,iterator:Iterator[T],length:int):
+        self.iterator = iterator
+        self.length = length
+    def __iter__(self):
+        return self.iterator
+    def __len__(self):
+        return self.length
+
 
 def peek_iterator(iterator: Iterator[Any]) -> Tuple[Any, Iterator[Any]]:
     """Return first item of iterator and iterator.
@@ -26,23 +39,26 @@ def peek_iterator(iterator: Iterator[Any]) -> Tuple[Any, Iterator[Any]]:
 
     return first, newiter()
 
-def readiter(files):
-    for file in tqdm(files,desc="reading images",leave=False):
-        yield tifffile.imread(file);
+def readiter(files:Sizeable[str|os.PathLike[str]]):
+    iter = (tifffile.imread(file) for file in tqdm(files,desc="reading images",leave=False))
+    return Ensized(iter,len(files))
+        
 
 # from https://stackoverflow.com/a/47270916/13682828
-def stack_files(series,output,**kwargs):
+def stack_files(series,output,progress=True,**kwargs):
     with tifffile.TiffWriter(output) as stack:
-        for s in tqdm(series):
+        for s in tqdm(series) if progress else series:
             stack.write(
                 s, 
                 photometric='minisblack',
                 **kwargs
             )
 
-def write_series(series:Iterable[Tuple[int,Iterator[np.ndarray]]],output,writerKwargs={},**kwargs):
-    with tifffile.TiffWriter(output,**writerKwargs,imagej=True) as stack:
-        for length,images in tqdm(series):
+def write_stack(output,series:Iterable[Sizeable[np.ndarray]],progress=True,writerKwargs={},**kwargs):
+    with tifffile.TiffWriter(output,**writerKwargs) as stack:
+        for it in tqdm(series) if progress else series:
+            length = len(it)
+            images = iter(it)
             if length > 0:
                 im,images = peek_iterator(images);
                 series_shape = (length,*im.shape);
@@ -51,6 +67,8 @@ def write_series(series:Iterable[Tuple[int,Iterator[np.ndarray]]],output,writerK
             else:
                 stack.write(None,contiguous=False);
 
+def write_series(output,images:Sizeable[np.ndarray],writerKwargs={},**kwargs):
+    return write_stack(output,[images],writerKwargs=writerKwargs,progress=False,**kwargs);
 
 
 if __name__ == "__main__":
@@ -72,5 +90,5 @@ if __name__ == "__main__":
     if output_file == '':
         print("no output file selected >:(");
         exit();
-    write_series([(len(files[s]),readiter(files[s])) for s in serieses],output_file);
+    write_stack([readiter(files[s]) for s in serieses],output_file);
     
