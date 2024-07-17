@@ -1,4 +1,4 @@
-from ast import Tuple, literal_eval as leval
+from ast import literal_eval as leval
 from dataclasses import dataclass
 import functools
 from itertools import groupby
@@ -6,17 +6,16 @@ from multiprocessing import Value
 from operator import attrgetter, itemgetter
 import os
 from pathlib import Path
-from typing import Any, Callable, Collection, Container, Iterable, Mapping, Self, Sized, overload
+import shutil
+from typing import Any, Collection, Container, Mapping, overload
 
 import bidict
 import imageio
-from jaxtyping import ArrayLike
-from nptyping import DType, NDArray
 import numpy as np
 import tifffile
 from tqdm import tqdm
 from stack_tiffs import Ensized, Sizeable, readiter, write_series, write_stack
-from libraries.parsend import parseND
+from parsend import parseND
 
 class Singleton[T](Sizeable[T]): #this is dumb
     def __init__(self,val:T):
@@ -61,7 +60,7 @@ def sorted_groups(i,key=None):
     return groupby(sorted(i,key=key),key=key);
 
 def stack_nd(nd_loc:str|Path,source_exts:Collection[str]=(".tif",".tiff"),
-             images_folder:str|Path|os.PathLike[str]="",output_folder:str|Path|os.PathLike[str]="stacks"):
+             images_folder:str|Path|os.PathLike[str]="",output_folder:str|Path|os.PathLike[str]="stacks", copy_nd:bool=False):
     ## write nd file + folder into a single tiff file (WARNING: Potentially very large!)
     ## supports multistage, multitime, and multiwavelength.
     ## Different stages e.g. (_s{pos}_) are written as different series
@@ -210,10 +209,14 @@ def stack_nd(nd_loc:str|Path,source_exts:Collection[str]=(".tif",".tiff"),
         else:
             write_series(outfile,multi_readiter(movie),photometric='minisblack',writerKwargs={"imagej":True})
 
+    if copy_nd:
+        shutil.copy(nd_loc,out/Path(nd_loc).name)
 
     print("Movie saved successfully")
 
-
+def copy_folders(src_folder,dest_folder):
+    nd_locs = Path(src_folder).rglob("*.nd")
+    
     
 if __name__ == "__main__":
     nd = r"F:\Lab Data\opto\2024.7.2 OptoPLC S345F FN Migration + Labeled FB Test\Multiwave\p.nd"
