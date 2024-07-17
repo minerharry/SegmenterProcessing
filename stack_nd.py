@@ -7,7 +7,7 @@ from operator import attrgetter, itemgetter
 import os
 from pathlib import Path
 import shutil
-from typing import Any, Collection, Container, Mapping, overload
+from typing import Any, Callable, Collection, Container, Iterable, Mapping, Self, Sized, overload
 
 import bidict
 import imageio
@@ -16,6 +16,10 @@ import tifffile
 from tqdm import tqdm
 from stack_tiffs import Ensized, Sizeable, readiter, write_series, write_stack
 from parsend import parseND
+
+def all_equal[T](f:Iterable[T],key:Callable[[T],Any]|None=None):
+    g = groupby(f,key=key)
+    return next(g,True) and not next(g,False)
 
 class Singleton[T](Sizeable[T]): #this is dumb
     def __init__(self,val:T):
@@ -50,8 +54,9 @@ class FilePart:
                 ValueError("Unrecognized metaseires filename part: " + part)
         return res
     
-    def in_range(self,timerange:Container[int],stagerange:Container[int],waverange:Container[int]):
-        return (self.wavenum is None or self.wavenum in waverange) \
+    def in_range(self,basename:str,timerange:Container[int],stagerange:Container[int],waverange:Container[int]):
+        return self.basename == basename \
+           and (self.wavenum is None or self.wavenum in waverange) \
            and (self.stagenum is None or self.stagenum in stagerange) \
            and (self.timepoint is None or self.timepoint in timerange)
 
@@ -59,8 +64,11 @@ class FilePart:
 def sorted_groups(i,key=None):
     return groupby(sorted(i,key=key),key=key);
 
-def stack_nd(nd_loc:str|Path,source_exts:Collection[str]=(".tif",".tiff"),
-             images_folder:str|Path|os.PathLike[str]="",output_folder:str|Path|os.PathLike[str]="stacks", copy_nd:bool=False):
+
+def stack_nd(nd_loc:str|Path,output_folder:str|Path|os.PathLike[str]="stacks",
+             source_exts:Collection[str]=(".tif",".tiff"),
+             images_folder:str|Path|os.PathLike[str]="",
+             copy_nd:bool=False):
     ## write nd file + folder into a single tiff file (WARNING: Potentially very large!)
     ## supports multistage, multitime, and multiwavelength.
     ## Different stages e.g. (_s{pos}_) are written as different series
@@ -69,9 +77,10 @@ def stack_nd(nd_loc:str|Path,source_exts:Collection[str]=(".tif",".tiff"),
 
     NDData = parseND(nd_loc)
 
-    ntime:int|None = leval(NDData.get("NTimePoints","None")) if NDData["DoTimelapse"] else None
-    nstage:int|None = leval(NDData.get("NStagePositions","None")) if NDData["DoStage"] else None
-    nwave:int|None = leval(NDData.get("NWavelengths","None")) if NDData["DoWave"] else None
+    basename = Path(nd_loc).stem
+    ntime:int|None = leval(NDData.get("NTimePoints","None")) if NDData["DoTimelapse"] == "TRUE" else None
+    nstage:int|None = leval(NDData.get("NStagePositions","None")) if NDData["DoStage"] == "TRUE" else None
+    nwave:int|None = leval(NDData.get("NWavelengths","None")) if NDData["DoWave"] == "TRUE" else None
 
     timenums = range(1,ntime+1) if ntime else [None]
     stagenums = range(1,nstage+1) if nstage else [None]
@@ -84,7 +93,7 @@ def stack_nd(nd_loc:str|Path,source_exts:Collection[str]=(".tif",".tiff"),
 
     fileparts:list[FilePart] = [FilePart.from_name(p,wavenames) for p in filenames]
         
-    group = filter(lambda x: FilePart.in_range(x,timenums,stagenums,wavenums),fileparts);
+    group = filter(lambda x: FilePart.in_range(x,basename,timenums,stagenums,wavenums),fileparts);
     # from IPython import embed; embed()
     # group = sorted(group,key=lambda x:x.stagenum)
 
@@ -181,6 +190,8 @@ def stack_nd(nd_loc:str|Path,source_exts:Collection[str]=(".tif",".tiff"),
     im_shape:tuple[int,...]|None = None
     im_dtype:np.dtype[Any]|None = None
 
+
+    flatten = False
     def read_im(im:(list[str]|Singleton[str]),imread=imageio.v3.imread):
         def _imread(k:str|None):
             nonlocal im_shape,im_dtype
@@ -194,10 +205,10 @@ def stack_nd(nd_loc:str|Path,source_exts:Collection[str]=(".tif",".tiff"),
                     im_dtype = res.dtype
                 return res
 
-        return _imread(im.val) if isinstance(im,Singleton) else np.stack([_imread(i) for i in im])
+        return _imread(im.val) if (isinstance(im,Singleton) and flatten) else np.stack([_imread(i) for i in im])
 
     def multi_readiter(iter:Sizeable[list[str|None]|Singleton[str|None]]):
-        gen = (read_im(it) for it in tqdm(iter,desc="reading series",leave=False))
+        gen = (read_im(it) for it in tqdm(iter,desc="writing series",leave=False))
         return Ensized(gen,len(iter))
         
 
@@ -214,11 +225,42 @@ def stack_nd(nd_loc:str|Path,source_exts:Collection[str]=(".tif",".tiff"),
 
     print("Movie saved successfully")
 
-def copy_folders(src_folder,dest_folder):
-    nd_locs = Path(src_folder).rglob("*.nd")
+def stack_and_copy(source:Path|os.PathLike[str]|str,dest:Path|os.PathLike[str]|str,source_im_exts:Collection[str]=(".tif",".tiff")):
+    dest, source  = Path(dest), Path(source)
+    dest.mkdir(exist_ok=True)
+    nds = Path(source).glob("*.nd")
+    any_nd = False 
+    for nd in nds:
+        print("Copying nd movie:",nd)
+        stack_nd(nd,dest,source_exts=source_im_exts)
+        any_nd = True
     
+    nd_copy_excl = [*source_im_exts,".nd"]
+    for path in Path(source).glob("*"):
+        if path.is_file():
+            #if there are any nd files, don't copy any other files with the source_im_exts extensions. 
+            #kinda dumb method but assuming all relevant files should be copied by stack_nd
+            if (not any_nd or path.suffix.lower() not in nd_copy_excl):
+                #copy file to dest
+                shutil.copy(path,dest/(path.relative_to(source)))
+        else:
+            #recursively copy subdirs
+            stack_and_copy(path,dest/(path.relative_to(source)),source_im_exts=source_im_exts)
+
+
+    
+
+
     
 if __name__ == "__main__":
-    nd = r"F:\Lab Data\opto\2024.7.2 OptoPLC S345F FN Migration + Labeled FB Test\Multiwave\p.nd"
-    stack_nd(nd)
+    # nd = r"F:\Lab Data\opto\2024.7.2 OptoPLC S345F FN Migration + Labeled FB Test\Multiwave\p.nd"
+    # stack_nd(nd)
     
+    src = Path(r"F:\Lab Data\opto")
+    dst = Path(r"C:\Users\Harrison Truscott\OneDrive - University of North Carolina at Chapel Hill\Bear Lab\Other Data\opto")
+
+    # src2 = src/"2024.6.25 OptoPLC FN+Peg Test 2"/"Phase"/"p.nd"
+    # dst2 = dst/"2024.6.25 OptoPLC FN+Peg Test 2"/"Phase"
+
+    stack_and_copy(src,dst)
+    # stack_nd(src2,output_folder=dst2)
