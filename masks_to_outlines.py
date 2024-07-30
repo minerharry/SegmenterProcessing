@@ -43,11 +43,19 @@ def masks_to_outlines(
 
         # from IPython import embed; embed()
         if isinstance(mask,PathLike):
+            print(mask)
             try:
                 mask = imread(mask);
             except:
                 mask = IJRoi.fromfile(mask)
         if (isinstance(mask,np.ndarray)):
+            print(mask.dtype)
+            print(np.unique(mask))
+
+            if len(mask.shape) == 3:
+                assert np.all((mask[:,:,0] == mask[:,:,1]) & (mask[:,:,1] == mask[:,:,2]))
+                mask = mask[:,:,0]
+            
             #assure only one mask
             labeled,n_labels = label(mask,return_num=True); #type:ignore
             if (n_labels > 1):
@@ -62,7 +70,9 @@ def masks_to_outlines(
             # assert n_labels == 1; #exactly one object in the image
 
             #load mask, get outline
+            print(mask.shape)
             contour,_ = cv2.findContours(mask,cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE);
+            print(contour)
         
             if cont_shape is None:
                 cont_shape = mask.shape
@@ -102,8 +112,11 @@ if __name__ == "__main__":
 
     path = Path(path);
 
-    n_outlines = 10
-    frames = list(map(int,np.linspace(0,len(files)-1,n_outlines)))
+    # n_outlines = 10
+    # frames = list(map(int,np.linspace(0,len(files)-1,n_outlines)))
+
+    outline_space=4
+    frames = range(0,len(files),outline_space)
     chosen = [files[f] for f in frames]
     print(f"using frames: {chosen}")
     im,contours = masks_to_outlines([path/f for f in chosen],outline_thickness=2,cmap="jet",im_size=(1024,1024),warn_multiple=False);
