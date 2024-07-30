@@ -1,7 +1,6 @@
-from ast import Tuple, literal_eval as leval
+from ast import literal_eval as leval
 from dataclasses import dataclass
 import functools
-from genericpath import isfile
 from itertools import groupby
 from multiprocessing import Value
 from operator import attrgetter, itemgetter
@@ -12,14 +11,11 @@ from typing import Any, Callable, Collection, Container, Iterable, Mapping, Self
 
 import bidict
 import imageio
-from jaxtyping import ArrayLike
-from nptyping import DType, NDArray
 import numpy as np
-from sklearn import base
 import tifffile
 from tqdm import tqdm
 from stack_tiffs import Ensized, Sizeable, readiter, write_series, write_stack
-from libraries.parsend import parseND
+from parsend import parseND
 
 def all_equal[T](f:Iterable[T],key:Callable[[T],Any]|None=None):
     g = groupby(f,key=key)
@@ -68,9 +64,11 @@ class FilePart:
 def sorted_groups(i,key=None):
     return groupby(sorted(i,key=key),key=key);
 
+
 def stack_nd(nd_loc:str|Path,output_folder:str|Path|os.PathLike[str]="stacks",
              source_exts:Collection[str]=(".tif",".tiff"),
-             images_folder:str|Path|os.PathLike[str]=""):
+             images_folder:str|Path|os.PathLike[str]="",
+             copy_nd:bool=False):
     ## write nd file + folder into a single tiff file (WARNING: Potentially very large!)
     ## supports multistage, multitime, and multiwavelength.
     ## Different stages e.g. (_s{pos}_) are written as different series
@@ -222,6 +220,8 @@ def stack_nd(nd_loc:str|Path,output_folder:str|Path|os.PathLike[str]="stacks",
         else:
             write_series(outfile,multi_readiter(movie),photometric='minisblack',writerKwargs={"imagej":True})
 
+    if copy_nd:
+        shutil.copy(nd_loc,out/Path(nd_loc).name)
 
     print("Movie saved successfully")
 
