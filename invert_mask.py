@@ -1,8 +1,17 @@
 import numpy as np
 from skimage.io import imread,imsave,imshow
-inmask = 'working_masks/random_s2_t125.TIF'
-outmask = 'working_masks/random_s2_t125.TIF';
+from filegetter import askopenfilename,asksaveasfilename
+inmask = askopenfilename();
+# outmask = asksaveasfilename();
 image = imread(inmask);
 print(image.max());
-image = np.invert(image);
-imsave(outmask,image)
+bitData = image
+print(bitData);
+print(np.max(bitData));
+print(np.min(bitData));
+vals,counts = np.unique(bitData, return_counts=True)
+index = np.argmax(counts)
+print(vals[index]);
+
+# image = np.invert(image);
+# imsave(outmask,image)

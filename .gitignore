@@ -1,1 +1,19 @@
 output/**
+gcp_transfer/**
+Segmentation Analysis/**
+output_files/**
+*.pyc
+__pycache__/**
+libraries/**
+trackmasks/**
+temp/**
+gradient/**
+gradients/**
+caches/**
+associations/cache/**
+labeledmasks/**
+TIRF_output_test/**
+gcp_transfer/**
+out/**
+labeledmasks/**
+.ipynb_checkpoints/**
