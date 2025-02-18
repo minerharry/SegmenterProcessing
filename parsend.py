@@ -1,18 +1,25 @@
 from collections import UserDict
 import itertools
+from pathlib import Path
 import re
-from typing import Dict, List, Tuple
-from libraries.parse_moviefolder import filename_regex
+from typing import Dict, List, Tuple, TypeVar
+try:
+    from libraries.parse_moviefolder import filename_regex
+except:
+    pass
 series_regex = "s([0-9]+)"
 time_regex = "t([0-9]+)"
+
+T = TypeVar("T")
 
 ##Parses .nd files from metamorph on the optotaxis microscope
 null = object()
 class NDData(dict[str,str|list[str]]):
-    def get[T](self,val:str,default:T|None=None):
+    def get(self,val:str,default:T|None=None):
         if val in self:
-            if isinstance(self[val],str):
-                return self[val]
+            v = self[val]
+            if isinstance(v,str):
+                return v
             else:
                 raise ValueError(f"Duplicate entry detected for key {val}, use __getitem__ or getEntry instead")
         else:
@@ -21,7 +28,7 @@ class NDData(dict[str,str|list[str]]):
             else:
                 raise KeyError(val)
             
-    def getEntry[T](self,val:str,default:T=null):
+    def getEntry(self,val:str,default:T=null):
         if val in self:
             return self[val]
         else:
@@ -52,6 +59,9 @@ def parseND(filePath)->NDData:
                 args[key] = [args[key],val]
         else:
             args[key] = val
+    if "basename" in args:
+        raise ValueError()
+    args["basename"] = Path(filePath).stem
     return args;
 
 def StageDict(filePath):

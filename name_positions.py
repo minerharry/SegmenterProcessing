@@ -183,9 +183,9 @@ def prep_images_for_stitching(
             if (imname not in posnames):
                 raise ValueError(f"Image {im} not found")
         else:
-            if im not in range(len(posnames)):
+            if im-1 not in range(len(posnames)):
                 raise ValueError(f"Image index {im} out of range")
-            imname = posnames[im]
+            imname = posnames[im-1]
         
         data = imdata[imname]
 

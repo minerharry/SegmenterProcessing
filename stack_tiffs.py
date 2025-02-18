@@ -1,5 +1,5 @@
 import glob
-from typing import Any, Collection, Iterable, Iterator, Protocol, Sized, Tuple
+from typing import Any, Collection, Iterable, Iterator, Protocol, Sized, Tuple, TypeVar
 import numpy as np
 import tifffile
 import fnmatch
@@ -7,11 +7,11 @@ import re
 import os
 # from fastprogress import progress_ba
 from tqdm import tqdm
-
-class Sizeable[T](Sized,Iterable[T],Protocol):
+T = TypeVar("T")
+class Sizeable(Sized,Iterable[T],Protocol):
     ...
 
-class Ensized[T](Sizeable[T]):
+class Ensized(Sizeable[T]):
     def __init__(self,iterator:Iterator[T],length:int):
         self.iterator = iterator
         self.length = length
