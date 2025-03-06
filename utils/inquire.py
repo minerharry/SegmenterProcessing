@@ -1,10 +1,11 @@
 import inquirer
 
-def inquire(question:str,options:list[str]):
+def inquire(question:str,options:list[str],default:str|None=None):
     questions = [
     inquirer.List('choice',
                     message=question,
                     choices=options,
+                    default=default,
                 ),
     ]
     answers = inquirer.prompt(questions)

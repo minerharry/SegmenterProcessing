@@ -1,3 +1,19 @@
+/*
+TRACKING CLICKER V1.0
+by Harrison Truscott
+
+Primary Hotkeys:
+Ctrl-shift-l: Set movie length
+Ctrl-shift-t: Set click interval
+Ctrl-shift-p: Activate clicker - click for specified length of movie
+
+Hotkeys while clicker is active:
+Escape - exit tracking
+Space/shift - hold to pause tracking
+[ - slow down clicking (increase interval by quickOffset)
+] - speed up clicking (decrease interval by quickOffset)
+
+*/
 length := 577
 interval := 600
 quickOffset := 20
@@ -67,8 +83,8 @@ granularity := 20
 }
 
 #HotIf active == 1
-*=:: global interval -= quickOffset
-*-:: global interval += quickOffset
+*]:: global interval -= quickOffset
+*[:: global interval += quickOffset
 #HotIf
 
 ^+o::{

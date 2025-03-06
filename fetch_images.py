@@ -113,14 +113,19 @@ def try_copy_image(source:Path,imagename:str,dest:Path):
         except FileNotFoundError:
             raise SourceNotFound
 
-def copy_image(sources:Iterable[Path|str],imagename:str,dest:Path|str):
-    for s in sources:
-        try:
-            return try_copy_image(Path(s),imagename,Path(dest))
-        except SourceNotFound:
-            continue
-    raise SourceNotFound(f"Unable to match any sources {sources}")
+sourceMap = {
+    "random" : "G:/Other computers/USB and External Devices/USB_DEVICE_1643752484/2022.1.19 Random Test", #low cell count
+    "random2" : "G:/Other computers/USB and External Devices/USB_DEVICE_1643752484/2022.2.7 Random Migration", #some bubbles, but good overall
+    "migration1" : "G:/Other computers/USB and External Devices/USB_DEVICE_1643752484/2022.1.20 Migration Test 1", #blurry
+    "migration2" : "G:/Other computers/USB and External Devices/USB_DEVICE_1643752484/2022.2.9 Migration Test 2", #no migration
+    "migration4" : "G:/Other computers/USB and External Devices/USB_DEVICE_1643752484/2022.2.16 Migration Test 4", #some contamination
+    "migration5" : "G:/Other computers/USB and External Devices/USB_DEVICE_1643752484/2022.2.23 Migration Test 5",
+    "migration6" : "G:/Other computers/USB and External Devices/USB_DEVICE_1643752484/2022.3.1 Migration Test 6", #low cell count, some small contamination
+    "migration7" : "G:/Other computers/USB and External Devices/USB_DEVICE_1643752484/2022.3.3 Migration Test 7",
+    "migration8" : "G:/Other computers/USB and External Devices/USB_DEVICE_1643752484/2022.3.8 Migration Test 8",
+}
 
+sources = ["random","random2","migration1","migration4","migration5","migration6","migration7","migration8"];
 
 sources = ["migration45","migration46","migration47","migration50","migration51","migration53","migration54","migration55","migration56"];
 sources = ["migration47","migration50","migration53","migration55","migration51"]

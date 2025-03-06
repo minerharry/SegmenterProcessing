@@ -1,8 +1,8 @@
 import os
 from pathlib import Path
 import re
-from telnetlib import IP
-from typing import Any, Callable, Sequence
+# from telnetlib import IP
+# from typing import Any, Callable, Sequence
 from matplotlib import gridspec
 from matplotlib.animation import FuncAnimation
 from matplotlib.figure import Figure, SubFigure
