@@ -1,16 +1,16 @@
 #modified from
 #https://github.com/juglab/EmbedSeg/blob/main/EmbedSeg/utils/generate_crops.py
   
-import os
+from typing import Iterable
+from warnings import warn
+import cv2
 import numpy as np
-import tifffile
 from scipy.ndimage.measurements import find_objects
 from scipy.ndimage.morphology import binary_fill_holes
 from scipy.spatial import distance_matrix
 from skimage.segmentation import find_boundaries
 #import hdmedians as hd
 #from numba import jit
-
 
 '''
 @jit(nopython=True)
@@ -27,7 +27,9 @@ def pairwise_python(X):
             D[i, j] = np.sqrt(d)
     return D
 '''
-def get_centers(instance, center, ids, one_hot):
+
+valid_centers = ["centroid","approximate-medoid","medoid","largest-circle","ellipse"]
+def get_centers(instance:np.ndarray, center:str, ids:Iterable[int], one_hot:bool=False):
     """
         Get the centers of all the labeled objects in a mask
         ----------
@@ -38,19 +40,16 @@ def get_centers(instance, center, ids, one_hot):
             One of 'centroid', 'approximate-medoid', 'medoid' or 'largest-circle'
         ids: list
             Unique ids corresponding to the objects present in the instance image.
-        one_hot: boolean
+        one_hot: boolean [Default: False]
             True (in this case, `instance` has shape DYX) or False (in this case, `instance` has shape YX).
     """
     centers=[]
-    if (not one_hot):
-        center_image = np.zeros(instance.shape, dtype=bool)
-    else:
-        center_image = np.zeros((instance.shape[-2], instance.shape[-1]), dtype=bool)
-    for j, id in enumerate(ids):
+    for _, id in enumerate(ids):
         if (not one_hot):
-            y, x = np.where(instance == id)
+            mask = (instance == id)
         else:
-            y, x = np.where(instance[id] == 1)
+            mask = (instance[id] == 1)
+        y,x = np.where(mask)
         if len(y) != 0 and len(x) != 0:
             if (center == 'centroid'):
                 ym, xm = np.mean(y), np.mean(x)
@@ -80,9 +79,32 @@ def get_centers(instance, center, ids, one_hot):
                 mindist = np.min(dist_matrix, 1)                
                 imax = np.argmax(mindist)
                 ym, xm = y[imax], x[imax]
+
+            elif (center == "ellipse"):
+                contours,_ = cv2.findContours(mask.astype("uint8"),cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE);
+                if len(contours) > 1:
+                    warn("Multiple contours detected for id " + str(id) + ",using only the first one...")
+                try:
+                    cpos,size,rotation = cv2.fitEllipseDirect(contours[0])
+                except cv2.error as e:
+                    if "Incorrect size of input array" in e.msg:
+                        ##this triggers when opencv says the contour array is too small, so it can't fit an ellipse
+                        #TODO: if this happens, maybe just use centroid? 
+                        # on the other hand, objects this small really shouldn't be going through, so it may be better to error
+                        raise Exception(f"object with id {id} too small to get contours for ellipse fitting")
+                    else:
+                        raise e
+
+                xm,ym = cpos
+
+            else:
+                raise Exception("Unrecognized center type:",center)
+
                 
             centers.append([xm,ym])
     return centers
+get_centers.valid_centers = valid_centers ##you can just do this apparently
+
 
 
 def generate_center_image(instance, center, ids, one_hot):
@@ -105,11 +127,33 @@ def generate_center_image(instance, center, ids, one_hot):
         center_image = np.zeros(instance.shape, dtype=bool)
     else:
         center_image = np.zeros((instance.shape[-2], instance.shape[-1]), dtype=bool)
-    for j, id in enumerate(ids):
+    centers = get_centers(instance,center,ids,one_hot=one_hot)
+    for x,y in centers:
+        center_image[y][x] = True
+    return center_image
+
+
+def generate_annotated_image(instance:np.ndarray, center:str, ids:Iterable[int], annotation_value=100,one_hot:bool=False):
+    """
+        Generate a copy of the input with annotations added for centers and fit parameters
+        ----------
+        instance: numpy array
+            `instance` image containing unique `ids` for each object (YX)
+             or present in a one-hot encoded style where each object is one in it own slice and zero elsewhere.
+        center: string
+            One of 'centroid', 'approximate-medoid', 'medoid' or 'largest-circle'
+        ids: list
+            Unique ids corresponding to the objects present in the instance image.
+        one_hot: boolean [Default: False]
+            True (in this case, `instance` has shape DYX) or False (in this case, `instance` has shape YX).
+    """
+    image = instance.copy()
+    for _, id in enumerate(ids):
         if (not one_hot):
-            y, x = np.where(instance == id)
+            mask = (instance == id)
         else:
-            y, x = np.where(instance[id] == 1)
+            mask = (instance[id] == 1)
+        y,x = np.where(mask)
         if len(y) != 0 and len(x) != 0:
             if (center == 'centroid'):
                 ym, xm = np.mean(y), np.mean(x)
@@ -130,8 +174,37 @@ def generate_center_image(instance, center, ids, one_hot):
                 #dist_matrix = pairwise_python(np.vstack((x, y)).transpose())
                 #imin = np.argmin(np.sum(dist_matrix, axis=0))
                 #ym, xm = y[imin], x[imin]		
-            center_image[int(np.round(ym)), int(np.round(xm))] = True
-    return center_image
+            elif (center=='largest-circle'):
+                image_only_id=np.zeros(instance.shape, dtype=bool)
+                image_only_id[y,x] = True
+                boundary = find_boundaries(image_only_id, mode='inner').astype(np.uint8)
+                yb,xb = np.where(boundary==1)
+                dist_matrix = distance_matrix(np.vstack((x, y)).transpose(), np.vstack((xb, yb)).transpose())
+                mindist = np.min(dist_matrix, 1)                
+                imax = np.argmax(mindist)
+                ym, xm = y[imax], x[imax]
+
+            elif (center == "ellipse"):
+                contours,_ = cv2.findContours(mask.astype("uint8"),cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE);
+                if len(contours) > 1:
+                    warn("Multiple contours detected for id " + str(id) + ",using only the first one...")
+                try:
+                    cpos,size,rotation = cv2.fitEllipseDirect(contours[0])
+                except cv2.error as e:
+                    if "Incorrect size of input array" in e.msg:
+                        raise Exception(f"object with id {id} too small to get contours for ellipse fitting")
+                    else:
+                        raise e
+
+                image = cv2.ellipse(image.astype("uint8"),(cpos,size,rotation),annotation_value,3);
+                xm,ym = cpos
+
+            else:
+                raise Exception("Unrecognized center type:",center)
+            image = cv2.circle(image.astype("uint8"),(int(xm),int(ym)),3,annotation_value,-10)
+                
+            
+    return image
 
 
 def _fill_label_holes(lbl_img, **kwargs):
