@@ -2,16 +2,22 @@ import os
 import subprocess
 import tempfile
 from typing import Any, Literal
+import warnings
 
 from bs4 import BeautifulSoup, NavigableString
 
 #list of jars to include by default in the class math. Usually either bioformats_package.jar location,
 # or the locations of both formats-gpl.jar and bio-formats-tools.jar
-bf_jars = [r"C:\Program Files\bftools\bioformats_package.jar"]
+bf_folder = r"C:\Program Files\bftools"
+bf_jars = [bf_folder,rf"{bf_folder}\bioformats_package.jar"]
 
 bf_aux_files = [r"utils\logback"]; #make sure logging output is nice, specifically neded for formatlist. Needs to be folder for godforsaken reason
 
 class CommandException(Exception):
+    def __init__(self,command,message):
+        self.command = command
+        self.message = message
+        super().__init__(f"Error executing command: {self.command}\n" + self.message);
     pass;
 
 class BF_Commands:
@@ -89,8 +95,10 @@ def call_bioformats(mainclass:str,
 
     command = ["java",*jvm_args,mainclass,*class_args];
 
+    print(command)
 
     ## run command
+    print("Calling bftools...")
     try:
         out = subprocess.run(command,check=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,stdin=subprocess.PIPE if block_stdin else None); #redirect stdin iff prevent user from entering
     except FileNotFoundError as e:
@@ -98,7 +106,8 @@ def call_bioformats(mainclass:str,
     except subprocess.CalledProcessError as e:
         
         print(e.stdout.decode())
-        raise CommandException(e.stderr.decode()) from e;
+        raise CommandException(command,e.stderr.decode()) from e;
+    print("bftools called")
 
     stdout = out.stdout
 
@@ -125,6 +134,8 @@ def showinf(file:str,nopix:bool|None=None,nocore:bool|None=None,nometa:bool|None
     del command_kwargs["file"];
     del command_kwargs["options"];
     del command_kwargs["kwargs"];
+    decode = kwargs.get("decode",False) 
+    kwargs["decode"]=False; #ok so idk why but showinf decoding is fucked up so...
 
     commands = [file]
 
@@ -148,7 +159,18 @@ def showinf(file:str,nopix:bool|None=None,nocore:bool|None=None,nometa:bool|None
         commands += ["-option",k,v];
 
     mainclass = BF_Commands.SHOWINF;
-    return call_bioformats(mainclass,*commands,**kwargs);
+    res:bytes = call_bioformats(mainclass,*commands,**kwargs);
+
+    if decode:
+        if decode == True: decode = "utf-8"
+        try:
+            return res.decode(decode)
+        except UnicodeDecodeError as f:
+            warnings.warn("Unicode decoding resulted in an error: " + str(f))
+            return res.decode(decode,errors="replace")
+
+    else:
+        return res
 
 
 
@@ -160,7 +182,7 @@ def get_omexml_metadata(file:str,
     del extra_args["file"];
     del extra_args["kwargs"];
     extra_args.update(kwargs);
-    return showinf(file,nopix=True,omexml_only=True,**extra_args);
+    return showinf(file,nopix=True,omexml_only=True,decode=True,**extra_args);
 
 #oh boy lots of flags
 def bfconvert(infile:str,outfile:str,

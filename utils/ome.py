@@ -82,7 +82,7 @@ def parse_ome_metadata(file:TiffFile|str|Path|None=None,xml:BeautifulSoup|Path|s
         else:
             xml = get_omexml_metadata(str(file));
             # print(xmlstring)
-    if xml:
+    elif xml:
         if Path(xml).exists():
             with open(xml,'r') as f:
                 return BeautifulSoup(f,features="lxml-xml")

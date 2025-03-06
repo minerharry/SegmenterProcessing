@@ -1,8 +1,5 @@
+from ast import parse
 from copy import copy
-import functools
-from genericpath import exists
-import inspect
-from io import BytesIO
 import itertools
 import sys
 import json_tricks as json
@@ -11,10 +8,8 @@ import os
 from pathlib import Path
 import shutil
 
-from textwrap import fill
 from typing import Any, Callable, DefaultDict, Iterable, Literal, NamedTuple, overload
 import warnings
-from bs4 import BeautifulSoup
 import inquirer
 from matplotlib.artist import Artist
 from matplotlib.axes import Axes
@@ -33,10 +28,10 @@ from mpl_interactions import zoom_factory,panhandler
 from mpl_point_clicker import clicker
 from json_tricks import dump as jdump, load as jload
 import tifffile
-import xtiff #tifffile wrapper specifically for multichannel / stacks
-from utils import inquire
-from utils.bftools import get_omexml_metadata
-from utils.metadata import Metadata, absolute_coordinate_to_pixels, pixel_to_absolute_coordinates,get_pixel_scale
+# import xtiff #tifffile wrapper specifically for multichannel / stacks
+# from utils import inquire
+# from utils.bftools import get_omexml_metadata
+from utils.metadata import Metadata, MetamorphMetadata, absolute_coordinate_to_pixels, pixel_to_absolute_coordinates,get_pixel_scale
 
 import numpy as np
 import cv2 as cv
@@ -241,21 +236,43 @@ class PhaseTIRFCalibration:
     
 
 def main(force_calibration:bool=False,continue_calibration:bool=False):
-    parent_folder = Path(r"C:\Users\Harrison Truscott\OneDrive - University of North Carolina at Chapel Hill\Bear Lab\optotaxis calibration\data\tirf calibration local\2024.2.23 OptoITSN Fix Test 1")
-    parent_folder = parent_folder/"3 notches"
-    phase_parent_folder = parent_folder
-    phase_folder = phase_parent_folder/"Phase"
-    gradient_folder = phase_parent_folder/"Gradient"
 
-    phase_tiled = phase_folder/"fused.tif"
-    gradient_tiled = gradient_folder/"fused.tif"
+    ###TIRF/PHASE CALIBRATION PATHS
+    if False:
+        parent_folder = Path(r"C:\Users\Harrison Truscott\OneDrive - University of North Carolina at Chapel Hill\Bear Lab\optotaxis calibration\data\tirf calibration local\2024.2.23 OptoITSN Fix Test 1")
+        parent_folder = parent_folder/"3 notches"
 
-    TIRF_folder = parent_folder/("TIRF")
-    calibration_folder = TIRF_folder/"Calibration"
-    tirf_images = TIRF_folder/"Images"
-    # tirf_images = TIRF_folder/"Export_test"
+        phase_parent_folder = parent_folder
+        phase_folder = phase_parent_folder/"Phase"
+        gradient_folder = phase_parent_folder/"Gradient"
 
-    calib_file = (calibration_folder/"calibration.json")
+        phase_tiled = phase_folder/"fused.tif"
+        gradient_tiled = gradient_folder/"fused.tif"
+
+        TIRF_folder = parent_folder/("TIRF")
+        calibration_folder = TIRF_folder/"Calibration"
+        tirf_images = TIRF_folder/"Images"
+        # tirf_images = TIRF_folder/"Export_test"
+
+        calib_file = (calibration_folder/"calibration.json")
+
+    ###4x/20x CALIBRATION PATHS
+    if True:
+        parent_folder = Path(r"C:\Users\Harrison Truscott\OneDrive - University of North Carolina at Chapel Hill\Bear Lab\optotaxis calibration\data\Gradient Analysis\2025.2.16 OptoPLC S345F Steep Gradient Photoactivation")
+
+        phase_parent_folder = parent_folder
+        phase_folder = phase_parent_folder/"Phase Post 4x"
+        gradient_folder = phase_parent_folder/"Gradient Post 4x"
+
+        phase_tiled = phase_folder/"tiling.tif"
+        gradient_tiled = gradient_folder/"tiling.tif"
+
+        TIRF_folder = parent_folder
+        calibration_folder = TIRF_folder/"Calibration"
+        tirf_images = TIRF_folder/"Multiwave"
+        # tirf_images = TIRF_folder/"Export_test"
+
+        calib_file = (calibration_folder/"calibration.json")
 
     ### Goal: Align Phase/gradient images with TIRF images
     ## This can be done with some (>3) number of known points in common between the two images
@@ -320,6 +337,19 @@ def main(force_calibration:bool=False,continue_calibration:bool=False):
             file = Path(file);
             if (cm := file.with_suffix(".xml")).exists():
                 return OMEMetadata(file=file,xml=cm);
+            else:
+                t = TiffFile(file)
+                if (t.metaseries_metadata):
+                    try:
+                        return MetamorphMetadata(t)
+                    except Exception as e:
+                        warnings.warn(e)
+                        pass
+                elif t.ome_metadata:
+                    try:
+                        return OMEMetadata(file);
+                    except:
+                        pass
             return OMEMetadata(file);
     
         def get_calib_name(file:str|Path):
@@ -384,21 +414,30 @@ def main(force_calibration:bool=False,continue_calibration:bool=False):
     
         def get_all_tirf_nums():
             res:list[int] = [];
-            for dir in tirf_images.glob("cell*"):
-                num = dir.parts[-1].split("cell")[1];
-                res.append(int(num));
-            return res;
-
-        def get_all_tirf_images(): #silly name, but returns list of dicts associated
-            res:list[dict[Literal["bf","tirf","epi"],Path]] = [];
-            for dir in tirf_images.glob("cell*"):
-                num = dir.parts[-1].split("cell")[1];
-                res.append({type:dir/f"cell{num}_{tnum}.tif" for type,tnum in tirf_type_num_map.items()});
+            for f in tirf_images.glob("p_w1Cy5_s*_t*.TIF"):
+                f = str.removeprefix(f.name,"p_w1Cy5_s").removesuffix(".TIF")
+                pos,frame = f.split("_t")
+                res.append((pos,frame))
             return res
+            # for dir in tirf_images.glob("cell*"):
+            #     num = dir.parts[-1].split("cell")[1];
+            #     res.append(int(num));
+            # return res;
+
+        # def get_all_tirf_images(): #silly name, but returns list of dicts associated
+        #     res:list[dict[Literal["bf","tirf","epi"],Path]] = [];
+        #     for dir in tirf_images.glob("cell*"):
+        #         num = dir.parts[-1].split("cell")[1];
+        #         res.append({type:dir/f"cell{num}_{tnum}.tif" for type,tnum in tirf_type_num_map.items()});
+        #     return res
 
         def get_cell_num(num:int,type:Literal["bf","tirf","epi"]="tirf"):
             # return tirf_images/type/f"cell{num}.tif"
-            return tirf_images/f"cell{num}"/f"cell{num}_{tirf_type_num_map[type]}.tif"
+            # return tirf_images/f"cell{num}"/f"cell{num}_{tirf_type_num_map[type]}.tif"
+            key = num
+            if not isinstance(key,Sequence):
+                key = (key,97)
+            return tirf_images/f"p_w1Cy5_s{key[0]}_t{key[1]}.TIF"
         
         def switch_cell_num(num:int,type:Literal["bf","tirf","epi"]="bf",**kwargs):
             print(f"Images/cell{num}")
@@ -469,6 +508,9 @@ def main(force_calibration:bool=False,continue_calibration:bool=False):
             return res
 
         def add_point(phase:tuple[float,float]|Literal['current']='current',tirf:tuple[float,float]|Literal['current']='current'):
+            """Add new calibration point. Keyword arguments phase and tirf can be given as (x,y) coordinates, or if the default value of "current" is used,
+            the program will use the last point clicked on the corresponding image. 
+            """
             if phase == 'current':
                 phase = get_click_curr('phase',allow_none=False)
             if tirf == 'current':
@@ -485,9 +527,10 @@ def main(force_calibration:bool=False,continue_calibration:bool=False):
 
 
         def remove_point(num:int):
+            """Remove calibration point {num}."""
             idx = num-1
             p = points[idx]
-            points.remove(p)
+            del points[idx]
             texts[idx][0].remove()
             texts[idx][1].remove()
             texts.remove(texts[idx])
@@ -499,6 +542,8 @@ def main(force_calibration:bool=False,continue_calibration:bool=False):
             Calibration.remove_calibration_point(calib_name,make_calibdata(p)[0])
         
         def edit_point(num:int,phase:tuple[float,float]|Literal['current']|None=None,tirf:tuple[float,float]|Literal['current']|None=None):
+            """Edit existing calibration point number {num}. Like add_point, {phase} and {tirf} can be provided as coordinates or with "current" to use the currently selected points.
+            If phase or tirf is None (default), that point won't be edited. At least one of phase or tirf must be not None."""
             if phase == 'current':
                 phase = tuple(get_click_curr('phase'))
             if tirf == 'current':
@@ -517,6 +562,7 @@ def main(force_calibration:bool=False,continue_calibration:bool=False):
 
         #should only be used in cases of loading or error
         def remake_texts():
+            """Remake each text label. Should only be used in cases of loading or error."""
             nonlocal texts
             [(t[0].remove(),t[1].remove()) for t in texts]
             texts = [(pax.text(*ppos,str(i+1)),tax.text(*tpos,str(i+1))) for i,(ppos,tpos) in enumerate(points)]
@@ -576,7 +622,7 @@ def main(force_calibration:bool=False,continue_calibration:bool=False):
                 shape = sourceim;
             else:
                 shape = sourceim.shape;
-            corners = [(0,0),(shape[0]-1,0),(shape[0]-1,shape[1]-1),(0,shape[1]-1)]
+            corners = [(0,0),(shape[1]-1,0),(shape[1]-1,shape[0]-1),(0,shape[0]-1)]
             transformed = Calibration.transform_pixels(dest,*corners,meta=meta)
             return Polygon(transformed,closed=False);
 
@@ -1013,7 +1059,56 @@ def main(force_calibration:bool=False,continue_calibration:bool=False):
             
             warped = warped.astype(to_slice.dtype)
 
-            return warped                
+            return warped
+
+        def show():
+            with plt.ion():
+                plt.show()
+
+        def save():
+            Calibration.save()
+
+        commands = [
+            show,
+            save,
+            add_point,
+            edit_point,
+            update_scatter,
+            remove_point,
+            switch_image,
+            switch_cell_num,
+            toggle_gradient,
+            zoom_bbox,
+            unzoom,
+            set_zoom_home,
+            draw_bbox,
+            draw_all_bboxes,
+            clear_bboxes,
+            get_bbox,
+            slice_bbox,
+            test_phase_point,
+            test_tirf_point,
+            clear_test_points,
+            remake_texts,
+            calibrate_image_export,
+            export_images,
+            export_images_stacked,
+            export_images_transpose,
+            make_calibdata,
+            plot_calibdata,
+            remove_calibration_points,
+            # get_all_tirf_images,
+            get_all_tirf_nums,
+            get_tirf_image,
+            get_tirf_images,
+            get_calib_images,
+            get_bright_cellnums,
+            get_cell_num,
+            get_calib_name,
+            get_warped_image,
+        ]
+
+        commandnames = [c.__name__ for c in commands]
         
         switch_cell_num(cell_num);
         unzoom()
@@ -1023,7 +1118,8 @@ def main(force_calibration:bool=False,continue_calibration:bool=False):
         calib_images = get_calib_images()
         images = get_tirf_images()
 
-        from IPython import embed; embed()
+        from IPython import embed; 
+        embed(header="Welcome to the correlative alignment python commandline utility! Use show() to show the window and start editing, and commandnames for a list of commands. For more details on a particular command, use help(command).")
         exit()
 
 
