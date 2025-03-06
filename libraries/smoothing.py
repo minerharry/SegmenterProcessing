@@ -2,9 +2,12 @@ import math
 import numpy as np
 
 
-class Mavg:
-    def __call__(self,*args,**kwargs):
+class _Mavg:
+    def __call__(self,*args,power=None,**kwargs):
+        if power is not None:
+            return (self**power)(*args,**kwargs)
         return me(*args,**kwargs);
+
     def __pow__(self,k:int):
         return exp_avg(self,k);
 
@@ -22,7 +25,7 @@ def me(x, w, include_edges=True):
 
 a = 6
 b = 7
-moving_average = mavg = Mavg();
+moving_average = mavg = _Mavg();
 
 def exp_avg(c,k:int):
     def apply(x,w,**kwargs):

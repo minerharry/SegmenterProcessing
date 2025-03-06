@@ -3,8 +3,8 @@ from pathlib import Path
 import shutil
 from tqdm import tqdm
 from utils.filegetter import adir
-from fetch_images import sourceMap, get_images, copy_image
-from libraries.filenames import filename_format,filename_regex_anybasename,alphanumeric_match,tiff_ext
+from fetch_images import sourceMap, get_images, try_copy_image
+from utils.filenames import filename_format,filename_regex_anybasename,alphanumeric_match,tiff_ext
 import os
 import re
 import gsutilwrap

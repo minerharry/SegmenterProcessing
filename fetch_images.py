@@ -147,7 +147,7 @@ if __name__ == "__main__":
         os.makedirs(outFolder);
     for source in tqdm(sources):
         s = sourceMap[source]
-        if not isinstance(s,tuple):
+        if isinstance(s,str):
             s = (s,)
 
         images = get_images(s)
@@ -155,4 +155,4 @@ if __name__ == "__main__":
         
 
         for im in tqdm(ims,leave=False):
-            copy_image(s,im,outFolder/re.sub(basename_regex,source,im))
+            try_copy_image(Path(s[0]),im,outFolder/re.sub(basename_regex,source,im))

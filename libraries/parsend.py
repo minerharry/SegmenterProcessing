@@ -1,18 +1,40 @@
+from collections import UserDict
 import itertools
-from msilib.schema import Error
-import random
 import re
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, TypeVar
+from libraries.parse_moviefolder import filename_regex
 series_regex = "s([0-9]+)"
 time_regex = "t([0-9]+)"
-filename_regex = 'p[0-9]*_s([0-9]+)_t([0-9]+).*\.(TIF|TIFF|tif|tiff)';
 
 ##Parses .nd files from metamorph on the optotaxis microscope
+T = TypeVar("T")
+null = object()
+class NDData(dict[str,str|list[str]]):
+    def get(self,val:str,default:T|None=None):
+        if val in self:
+            if isinstance(self[val],str):
+                return self[val]
+            else:
+                raise ValueError(f"Duplicate entry detected for key {val}, use __getitem__ or getEntry instead")
+        else:
+            if default:
+                return default
+            else:
+                raise KeyError(val)
+            
+    def getEntry(self,val:str,default:T=null):
+        if val in self:
+            return self[val]
+        else:
+            if default is not null:
+                return default
+            else:
+                raise KeyError(val)
 
-def parseND(filePath)->Dict[str,str]:
+def parseND(filePath)->NDData:
     with open(filePath,'r') as f:
         lines = f.readlines();
-    args = {};
+    args = NDData();
     for line in lines:
         largs = line.rstrip("\n").split(", "); #line args lol
         if largs[0] == '':
@@ -21,7 +43,16 @@ def parseND(filePath)->Dict[str,str]:
             if largs[0].startswith("\"EndFile\""):
               break;
             continue;
-        args[largs[0].replace("\"","")] = largs[1].replace("\"","");
+        key = largs[0].replace("\"","")
+        val = ", ".join(larg.replace("\"","") for larg in largs[1:]);
+        if key in args:
+            ##DUPLICATE ROW! This happens sometimes. result is a list of str for each instance
+            if isinstance(args[key],list):
+                args[key].append(val)
+            else:
+                args[key] = [args[key],val]
+        else:
+            args[key] = val
     return args;
 
 def StageDict(filePath):
@@ -61,7 +92,7 @@ def sorted_dir(paths:List[str]):
 
 def stage_from_name(name:str):
     m = re.match(filename_regex,name);
-    return m.group(1) if m else "-1";
+    return m.group(2) if m else "-1";
 
 def grouped_dir(paths:List[str]):
     out = [];
@@ -72,6 +103,8 @@ def grouped_dir(paths:List[str]):
         out.append(sorted_dir(g));
     return out;
 
+
+##takes a stage dict and groups stages with the same nonnumeric prefix together (good for the metamorph stage position naming scheme)
 def group_stage_basenames(stage_dict:Dict[int,str]):
     invmap = {v:k for k,v in stage_dict.items()};
     order = sorted(invmap.keys());

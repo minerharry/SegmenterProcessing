@@ -13,7 +13,7 @@ from typing import Any, DefaultDict, Iterable, Literal, Sequence, TextIO, TypeVa
 from matplotlib import pyplot as plt
 from ordered_set import OrderedSet
 from utils.filegetter import afns,afn
-from utils.parse_tracks import TrackAnalysis
+from utils.parse_tracks import MergedTrackAnalysis, TrackAnalysis
 from libraries.parsend import StageDict, group_stage_basenames
 from utils.statplots import plot_CI
 from utils.zipdict import zip_dict
@@ -43,8 +43,25 @@ def StringableTrackAnalysis(file):
                 tracks[row["movie"]][row["trackid"]] = row;
     return dict(tracks)
 
-groupspec = None|dict[str,Iterable[tuple[str,int]]]
-def make_fmi_plots(filenames:Sequence[str],axes:list[Literal["x","y"]]="y",selections:list[list[tuple[int,int]]|None]|list[tuple[int,int]]|None=None,auto_groups:bool|Iterable[bool]=True,names:None|Sequence[str]=None,grouplist:None|groupspec|Iterable[groupspec]=None):
+groupspec = None|dict[str,Iterable[tuple[str,int|tuple[int,int]]]]
+def make_fmi_plots(filenames:Sequence[str|tuple[str,...]|TrackAnalysis],axes:list[Literal["x","y"]]="y",selections:list[list[tuple[int|tuple[int,int],int]]|None]|list[tuple[int|tuple[int,int],int]]|None=None,auto_groups:bool|Iterable[bool]=True,names:None|Iterable[str|None]=None,grouplist:None|groupspec|Iterable[groupspec]=None):
+    """Create FMI plots from tracking data analysis. Creates one figure per filename. Can accept multiple filenames, which will produce a MergedTrackAnalysis. Also accepts an existing TrackAnalysis object; make sure to specify names if so.
+    
+    filenames:Sequence[str|tuple[str]|TrackAnalysis], sequence of analysis inputs. Each entry must be an analysis object, a path to a TrackAnalysis .csv file, or
+    a tuple of TrackAnalysis .csv files.
+
+    axes:list[Literal["x","y"]], which FMI axis to use the analysis of (default y for vertical images); can be "x", "y", or both. Creates separate figures for each filename for each axis
+
+    grouplist:groupspec|Iterable[groupspec] how to combine individual stages from each movie into larger groups of shared analysis. each groupspec object is a dict of {groupname:Iterable[stage]}, where each stage is specified
+    as a tuple of [stagename,stagekey]. stage key is either an integer stage number or a valid key for the TrackAnalysis object; if multiple filenames are passed, the MergedTrackAnalysis object accepts
+    tuples of (file#,stage#). grouplist can either be passed as a single dict to apply the same grouping to each track analysis, or as an iterable of dicts to have different groups per analysis
+
+    selections: which tracks to include from each stage. For each track analysis, the selection spec is a list of (stage,track#) tuples. If the analysis is a MergedTrackAnalysis, stage can either be an integer or a tuple (file#,stage#). 
+    Selection spec can also be passed as a single list to apply the same selection to each analysis, or as a list of lists to apply different selections to each one.
+
+    auto_groups:bool whether to use contextual .nd files/folder structure to automatically assign groups based on metamorph stage names."""
+
+
     if len(filenames) == 0:
         return
     if isinstance(auto_groups,bool):
@@ -61,27 +78,37 @@ def make_fmi_plots(filenames:Sequence[str],axes:list[Literal["x","y"]]="y",selec
         grouplist = itertools.cycle([None])
     elif isinstance(grouplist,dict):
         grouplist = itertools.cycle([grouplist])
-    groups:None|dict[str,Iterable[tuple[str,int]]]
+    groups:None|dict[str,Iterable[tuple[str,int|tuple[int,int]]]]
     for t in axes:
         for n,selection,auto_group,ni,groups in zip(filenames,selections,auto_groups,names,grouplist):
-            anal_location = Path(n)
-            print("analyzing track data:",anal_location)
-            if ni is None:
-                name = anal_location.name 
-                if "$manual" in str(anal_location):
+
+            name = ni or ""
+            if isinstance(n,str):
+                loc = Path(n)
+                name = loc.name 
+                if "$manual" in str(loc):
                     name = "manual " + name
                 else:
                     name = "automatic " + name
                 if selection:
                     name = "selected " + name
+            elif isinstance(n,tuple):
+                loc = tuple((Path(p) for p in n))
+                assert ni is not None
             else:
-                name = ni
+                loc = None
+                assert ni is not None
 
             out = f"output/analysis/figures/{name}"
             plt.figure(name,figsize=(5.5,4.8))
             plt.title(name + " " + t)
 
-            data = TrackAnalysis(anal_location);
+            if loc is None:
+                pass
+            elif isinstance(loc,tuple):
+                data = MergedTrackAnalysis(loc)
+            else:
+                data = TrackAnalysis(loc);
             # print("data:",data)
 
             
@@ -92,14 +119,23 @@ def make_fmi_plots(filenames:Sequence[str],axes:list[Literal["x","y"]]="y",selec
 
 
             if auto_group and groups is None:
+                assert loc is not None
                 print("auto_grouping")
-                exp = anal_location.parent.name
-                exp = strsuffix(exp)
-                images = anal_location.parent.parent.parent/"images"/exp #to gcp_transfer, then images twice
-                nds = [x.path for x in os.scandir(images) if x.name.endswith(".nd")]
-                print("found nd file:",nds[0]);
-                maps = StageDict(nds[0]);
-                groups = group_stage_basenames(maps)
+                if not isinstance(loc,tuple):
+                    loc = (loc,)
+                multi = len(loc) > 1
+                groups = {}
+                for l in loc:
+                    exp = l.parent.name
+                    exp = strsuffix(exp)
+                    images = l.parent.parent.parent/"images"/exp #to gcp_transfer, then images twice
+                    nds = [x.path for x in os.scandir(images) if x.name.endswith(".nd")]
+                    print("found nd file:",nds[0]);
+                    maps = StageDict(nds[0]);
+                    grps = group_stage_basenames(maps)
+                    if multi:
+                        grps = {f"{exp}: nam":val for nam,val in grps.items()}
+                    groups.update(grps)
             else:
                 auto_group = False
                     

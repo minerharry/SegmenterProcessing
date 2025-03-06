@@ -1,6 +1,7 @@
 from __future__ import annotations
 from collections.abc import Sequence
 from abc import abstractmethod
+import os
 from pathlib import Path
 from types import TracebackType
 from typing import Any, Dict, Generic, Iterable, Iterator, Mapping, Protocol, Tuple, Type, Union, TypeVar, final, overload
@@ -11,7 +12,7 @@ from numpy import isin, ndarray
 from skimage.io import imread, imsave
 from tifffile.tifffile import TiffWriter
 
-raise NotImplementedError("not finished lmao");
+# raise NotImplementedError("not finished lmao");
 
 MovieKey = TypeVar("MovieKey")
 
@@ -108,27 +109,30 @@ class FramedMovieSequence(MovieSequence[MovieKey]):
         return (self[f] for f in self.frames);
 
 
-class _ImageMapMovie(KeyedMovie[MovieKey]):
-    def __init__(self,movies:Sequence[MovieKey],frames:Dict[MovieKey,Sequence[int]],folder:Union[str,Path],framePaths:Union[None,Dict[MovieKey,Dict[int,Union[str,Path]]]]=None) -> None:
+class ImageMapMovie(KeyedMovie[MovieKey]):
+    def __init__(self,movies:Sequence[MovieKey],frames:Union[Dict[MovieKey,Sequence[int]],Sequence[int]],folder:Union[str,Path],framePaths:Union[None,Dict[MovieKey,Dict[int,Union[str,Path]]]]=None) -> None:
         if framePaths is None:
             raise TypeError(f"Image Movie constructor missing required keyword argument framePaths (Dict[MovieKey,Dict[int,Union[str,Path]]])");
         super().__init__(movies);
         #Frames Paths should be relative to the folder
         self.folder = Path(folder);
+        if not isinstance(frames,Dict):
+            frames = {m:frames for m in movies}
         self.frames = frames;
         self.framePaths = framePaths
 
-    def __getsequence__(self, key: MovieKey) -> MovieSequence[MovieKey]:
+    def __getsequence__(self, key: MovieKey) -> ImageMapSequence[MovieKey]:
         if key not in self.movies:
             raise IndexError(f"Movie {key} not in specified movie range: {self.movies}");
-        return _ImageMapSequence(self.frames[key],self.framePaths[key],self.folder,key);
+        return ImageMapSequence(self.frames[key],self.framePaths[key],self.folder,key);
 
     @classmethod
     @contextmanager
     def write(cls,movies:Sequence[MovieKey],frames:Dict[MovieKey,Sequence[int]],location:Union[str,Path],framePaths:Dict[MovieKey,Dict[int,Union[str,Path]]]={}):
-        yield _ImageMapWriter[MovieKey](movies,frames,framePaths,location);
+        yield ImageMapWriter[MovieKey](movies,frames,framePaths,location);
+        
 
-class _ImageMapWriter(MovieWriter[MovieKey],SequenceWriter):
+class ImageMapWriter(MovieWriter[MovieKey],SequenceWriter):
     def __init__(self,movies:Sequence[MovieKey],frames:Dict[MovieKey,Sequence[int]],framePaths:Dict[MovieKey,Dict[int,Union[str,Path]]],folder:Union[str,Path]):
         self.movies = movies;
         self.frames = frames;
@@ -142,7 +146,7 @@ class _ImageMapWriter(MovieWriter[MovieKey],SequenceWriter):
         if key not in self.movies:
             raise IndexError(f"Movie {key} not in specified movie range: {self.movies}")
         self.currentMovie = key;
-        self.frameIter = iter(self.frames[self.currentMovie]);;
+        self.frameIter = iter(self.frames[self.currentMovie]);
         yield self
         self.frameIter = None;
         self.currentMovie = None;
@@ -156,15 +160,15 @@ class _ImageMapWriter(MovieWriter[MovieKey],SequenceWriter):
     
 
 
-class _ImageMapSequence(FramedMovieSequence[MovieKey]):
+class ImageMapSequence(FramedMovieSequence[MovieKey]):
     def __init__(self,frames:Sequence[int],framePaths:Dict[int,Union[str,Path]],folder:Union[str,Path],movie:MovieKey) -> None:
         super().__init__(frames);
         self.frameDict = framePaths;
         self.movie = movie;
         self.folder = Path(folder);
     
-    def __slice__(self, frSlice: slice) -> MovieSequence[MovieKey]:
-        return _ImageMapSequence(self.frames[frSlice],self.frameDict,self.folder,self.movie);
+    def __slice__(self, frSlice: slice) -> ImageMapSequence[MovieKey]:
+        return ImageMapSequence(self.frames[frSlice],self.frameDict,self.folder,self.movie);
     
     def __readframe__(self, frame: int) -> ndarray:
         if frame not in self.frames:
@@ -174,7 +178,7 @@ class _ImageMapSequence(FramedMovieSequence[MovieKey]):
 
 
 
-class _TiffPageSequence(FramedMovieSequence[MovieKey]):
+class TiffPageSequence(FramedMovieSequence[MovieKey]):
     #wrapper of TiffPageSeries that just returns ndarrays
     def __init__(self,series:TiffPageSeries,frames:Sequence[int],movieKey:MovieKey) -> None:
         super().__init__(frames);
@@ -182,7 +186,7 @@ class _TiffPageSequence(FramedMovieSequence[MovieKey]):
         self.movie = movieKey;
 
     def __slice__(self, frSlice: slice) -> MovieSequence[MovieKey]:
-        return _TiffPageSequence(self.series,self.frames[frSlice],self.movie);
+        return TiffPageSequence(self.series,self.frames[frSlice],self.movie);
 
     def __readframe__(self, frame: int) -> ndarray:
         if frame not in self.frames:
@@ -191,7 +195,7 @@ class _TiffPageSequence(FramedMovieSequence[MovieKey]):
         assert f is not None, f"Error getting frame {frame} from the tif series for movie {self.movie} - series[frame] returned None"
         return f.asarray(); 
 
-class _MultiTiffMovie(KeyedMovie[MovieKey]):
+class MultiTiffMovie(KeyedMovie[MovieKey]):
     def __init__(self,movies:Sequence[MovieKey],frames:Dict[MovieKey,Sequence[int]],location:Union[str,Path],moviePaths:Union[Dict[MovieKey,Union[str,Path]],None]=None) -> None:
         if moviePaths is None:
             raise TypeError("Multi Tiff Movie constructor missing required keyword argument moviePaths");
@@ -206,7 +210,7 @@ class _MultiTiffMovie(KeyedMovie[MovieKey]):
             raise IndexError(f"Movie {key} not in specified movie range: {self.movies}");
         if key not in self.files:
             self.files[key] = TiffFile(self.location/self.paths[key]);
-        return _TiffPageSequence(self.files[key].series[0],self.frames[key],key);
+        return TiffPageSequence(self.files[key].series[0],self.frames[key],key);
         
     def __exit__(self, __exc_type: type[BaseException] | None, __exc_value: BaseException | None, __traceback: TracebackType | None) -> bool | None:
         for file in self.files.values():
@@ -218,9 +222,9 @@ class _MultiTiffMovie(KeyedMovie[MovieKey]):
     @contextmanager
     def write(cls, movies: Sequence[MovieKey], frames: Dict[MovieKey, Sequence[int]], location: Union[str, Path], moviePaths:Union[Dict[MovieKey,Union[str,Path]],None]=None):
         assert moviePaths is not None
-        yield _MultiTiffWriter(movies,frames,location,moviePaths);
+        yield MultiTiffWriter(movies,frames,location,moviePaths);
 
-class _MultiTiffWriter(MovieWriter[MovieKey],SequenceWriter):
+class MultiTiffWriter(MovieWriter[MovieKey],SequenceWriter):
     def __init__(self,movies:Sequence[MovieKey],frames:Dict[MovieKey,Sequence[int]],location:Union[str,Path],moviePaths:Dict[MovieKey,Union[str,Path]]):
         self.movies = movies;
         self.frames = frames;
@@ -250,7 +254,7 @@ class _MultiTiffWriter(MovieWriter[MovieKey],SequenceWriter):
         self.lastFrame = f;
         
 
-class _SingleTiffMovie(KeyedMovie[int]):
+class SingleTiffMovie(KeyedMovie[int]):
     """Container for reading a tiff movie"""
     def __init__(self,movies:Sequence[int],frames:Dict[int,Sequence[int]],tiffPath:Union[str,Path]):
         super().__init__(movies);
@@ -258,7 +262,7 @@ class _SingleTiffMovie(KeyedMovie[int]):
         self.path = Path(tiffPath);
         self.file = None;
 
-    def __enter__(self) -> _SingleTiffMovie:
+    def __enter__(self) -> SingleTiffMovie:
         self.file = TiffFile(self.path);
         return self
 
@@ -273,7 +277,7 @@ class _SingleTiffMovie(KeyedMovie[int]):
             s = self.file.series[__key];
         except IndexError:
             raise IndexError(f"Movie {__key} not in tiff file series range: {range(len(self.file.series))}");
-        return _TiffPageSequence(s,self.frames[__key],__key);
+        return TiffPageSequence(s,self.frames[__key],__key);
 
     def __exit__(self, __exc_type: type[BaseException] | None, __exc_value: BaseException | None, __traceback: TracebackType | None) -> bool | None:
         assert self.file is not None
@@ -284,11 +288,11 @@ class _SingleTiffMovie(KeyedMovie[int]):
     @classmethod
     @contextmanager
     def write(cls, movies: Sequence[int], frames: Dict[int, Sequence[int]], location: Union[str, Path]):
-        with _SingleTiffWriter(movies, frames, location) as w:
+        with SingleTiffWriter(movies, frames, location) as w:
             yield w
 
 
-class _SingleTiffWriter(MovieWriter[int],SequenceWriter,AbstractContextManager):
+class SingleTiffWriter(MovieWriter[int],SequenceWriter,AbstractContextManager):
     def __init__(self, movies: Sequence[int], frames: Dict[int, Sequence[int]], location: Union[str, Path]):
         self.movies = movies;
         self.frames = frames;
@@ -335,7 +339,7 @@ IMAGE_MOVIE = "images"
 MULTI_TIFF_MOVIE = "multitiff"
 SINGLE_TIFF_MOVIE = "tiff"
 
-movie_map:Dict[str,type[Movie]] = {IMAGE_MOVIE: _ImageMapMovie, MULTI_TIFF_MOVIE: _MultiTiffMovie, SINGLE_TIFF_MOVIE: _SingleTiffMovie};
+movie_map:Dict[str,type[Movie]] = {IMAGE_MOVIE: ImageMapMovie, MULTI_TIFF_MOVIE: MultiTiffMovie, SINGLE_TIFF_MOVIE: SingleTiffMovie};
 
 
 @contextmanager
@@ -351,9 +355,9 @@ def load_movie(reading_parameters:Dict[str,Any],location:Union[Path,str],keyword
     with movieClass(reading_parameters["movies"],reading_parameters["frames"],**movieArgs) as m:
         yield m
 
-@contextmanager
-def load_movies(reading_parameters:Dict[str,Any],*movies:Tuple[Union[Path,str],Union[str,None]]):
-    for m in movies:
+# @contextmanager
+# def load_movies(reading_parameters:Dict[str,Any],*movies:Tuple[Union[Path,str],Union[str,None]]):
+#     for m in movies:
 
 
 

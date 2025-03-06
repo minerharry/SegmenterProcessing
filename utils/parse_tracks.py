@@ -7,7 +7,7 @@ from csv import DictReader
 import math
 from os import PathLike
 import pickle
-from typing import DefaultDict, Hashable, Sequence, TextIO, Any
+from typing import DefaultDict, Hashable, Iterable, Sequence, TextIO, Any
 import numpy as np
 import copy
 from tqdm import tqdm
@@ -34,13 +34,16 @@ class FijiManualTrack(dict[int,dict[int,tuple[int,int]]]):
 class TrackAnalysis(dict[int, dict[int, dict[str, Any]]]):
     """dict[int, dict[int, dict[str, Any]]]
     a movie and trackid indexed dictionary of analysis parameters"""
-    def __new__(cls: type[TrackAnalysis],file:TextIO|PathLike|str) -> TrackAnalysis:
+    def __new__(cls,file:TextIO|PathLike|str|dict[int, dict[int, dict[str, Any]]]):
         tracks:dict[int,dict[int,dict[str,Any]]] = DefaultDict(dict)
-        with (open(file,'r') if not isinstance(file,TextIO) else nullcontext(file)) as f:
-            reader = DictReader(f);
-            for row in reader:
-                if row["trackid"] != "average":
-                    tracks[int(row["movie"])][int(row["trackid"])] = row;
+        if isinstance(file,dict):
+            tracks.update(file)
+        else:
+            with (open(file,'r') if not isinstance(file,TextIO) else nullcontext(file)) as f:
+                reader = DictReader(f);
+                for row in reader:
+                    if row["trackid"] != "average":
+                        tracks[int(row["movie"])][int(row["trackid"])] = row;
         obj = super().__new__(cls)
         obj.update(tracks)
         return obj
@@ -48,6 +51,41 @@ class TrackAnalysis(dict[int, dict[int, dict[str, Any]]]):
     def __init__(self,*args,**kwargs):
         """Read tracks from track analysis *.csv files; returns a movie and trackid indexed dictionary of analysis parameters"""
         pass
+
+class MergedTrackAnalysis(TrackAnalysis):
+    """dict[int, dict[int, dict[str, Any]]]
+    a movie and trackid indexed dictionary of analysis parameters"""
+    def __new__(cls,files:Iterable[TextIO|PathLike|str]):
+        sub_analysis = [TrackAnalysis(f) for f in files]
+        merged:dict[int,dict[int,dict[str,Any]]] = {}
+        total = 0
+        for an in sub_analysis:
+            shifted = {k+total:v for k,v in an.items()}
+            merged.update(shifted)
+            total += len(an)
+        obj = super().__new__(cls,merged)
+        setattr(obj,"sub_analyses", sub_analysis)
+        return obj
+    
+    def __init__(self,*args,**kwargs):
+        """Read tracks from track analysis *.csv files; returns a movie and trackid indexed dictionary of analysis parameters"""
+        self.sub_analyses:list[TrackAnalysis];
+        pass
+
+    def __getitem__(self, key: int|tuple[int,int]) -> dict[int, dict[str, Any]]:
+        if isinstance(key,tuple):
+            return self.sub_analyses[key[0]][key[1]]
+        else:
+            return self[key]
+        
+    def __contains__(self, key: int|tuple[int,int]) -> builtins.bool:
+        if super().__contains__(key):
+            return True
+        elif isinstance(key,tuple):
+            if key[1] in self.sub_analyses[key[0]]:
+                return True
+        return False
+
 
 class QCTracks(dict[int,dict[int,pd.DataFrame]]):
     """dict[int,dict[int,pd.DataFrame]]

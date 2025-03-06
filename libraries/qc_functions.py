@@ -64,12 +64,15 @@ def apply_qc(in_tracks:Dict[int,Dict[int,DataFrame]],
         #trim tracks
         #input: dict (trim) of elements with the form {(movie, track):(begginning frame, end frame)]
         #trim={(7,1):(1,53)}
-        trims:Dict[int,Dict[int,Tuple[int,int]]] = DefaultDict(lambda: {});
+        trims:Dict[int,Dict[int,Tuple[Union[int,None],Union[int,None]]]] = {m:{t:(None,None) for t in in_tracks[m]} for m in in_tracks};
         for (mov,track),(start,end) in trim.items():
             if track == -1:
                 trims[mov] = DefaultDict(lambda: (start,end));
+                log(f"applying manual trim: all tracks in movie {mov} limited to frames {start}-{end}")
             else:
                 trims[mov][track] = (start,end);
+                log(f"applying manual trim: track {track} in movie {mov} limited to frames {start}-{end}")
+            
 
         for mov,t in trims.items():
             for (track,(start,end)) in t.items():
@@ -85,35 +88,46 @@ def apply_qc(in_tracks:Dict[int,Dict[int,DataFrame]],
 
                 if initialTrackDelay is not None:
                     firstframe = firstframe+initialTrackDelay;
-
+                    
 
                 #check that input frames are in bounds
-                if start < firstframe or start > lastframe:
+                if start is None:
+                    start = firstframe
+                    #only apply initial track delay if no manual start specified
+                    if initialTrackDelay is not None:
+                        #only apply initial delay if not the start of the movie
+                        if start != 1:
+                            start += initialTrackDelay
+                            log(f"Applying automatic initial track delay: first frame of track {track} in movie {mov} trimmed from {start-initialTrackDelay} to {start}")
+                        else:
+                            log(f"track {track} in movie {mov} starts at the beginning of the movie, no track delay applied")
+                elif start < firstframe or start > lastframe:
                     raise Exception(f'in movie {mov} track {track} beggining of trimming {start} is out of range {(firstframe,lastframe)}');
-                if end < firstframe or end > lastframe:
+                
+                if end is None:
+                    end = lastframe
+                elif end < firstframe or end > lastframe:
                     raise Exception(f'in movie {mov} track {end} end of trimming {end} is out of range {(firstframe,lastframe)}');
 
                 if start >= end :
                     raise Exception(f'in movie {mov} track {track} end of trimming {end} is smaller or equal than beggining of trimming {start}')
                     
+                #get indices of desired first and last frames
                 ifirstframe = framec[framec==start].index[0]
-                #get index of desired last frame
                 ilastframe = framec[framec==end].index[0]
-
-                
 
                 #trim track
                 out_tracks[mov][track]=out_tracks[mov][track].loc[ifirstframe:ilastframe+1]
 
         
         ###CONDITIONS ON TRACKS
-        if minTrackLength:
+        if minTrackLength is not None and minTrackLength > 0:
             for imov in out_tracks:
                 for itr in out_tracks[imov]:        
                     #if track length less than min length deactivate track
-                    if len(out_tracks[imov][itr]) < minTrackLength:
+                    if (l := len(out_tracks[imov][itr])) < minTrackLength:
                         sampTrStatus[imov][itr]=0
-                        log(f"removing track {itr} from movie {imov}: track length too short")
+                        log(f"removing track {itr} from movie {imov}: track length {l} too short")
 
         if minTrackDisplacement is not None:
             for imov in out_tracks:
@@ -132,25 +146,21 @@ def apply_qc(in_tracks:Dict[int,Dict[int,DataFrame]],
         #exclude=[[1,7]]                
         for mov,track in exclude:
             sampTrStatus[mov][track]=0
+            log(f"Manually exclduing track {track} from movie {mov}")
         
 
         #only keep certain tracks
         #input: dict of elements of the form {movie:[track1,track2,...]}
         for mov,tracks in keep.items():
-            #for all the tracks in movie i[0]-1 turn off all the tracks
-            for itracks in sampTrStatus[mov]:
-                sampTrStatus[mov][itracks]=0
             #turn on the desired tracks
             for itracks in tracks:
                 sampTrStatus[mov][itracks]=1
+                log(f"Manually including track {itracks} from movie {mov}")
 
         #remove movies
         for mov in removemov:
             for itr in sampTrStatus[mov]: 
                 sampTrStatus[mov][itr]=0;
+            log(f"Manually removing movie {mov} from experiment")
                 
-                
-
-        
-
         return sampTrStatus, out_tracks
