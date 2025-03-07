@@ -23,6 +23,6 @@ itsn_auto_movies = [
     ("migration43",[11,12]),
     ("migration42",[6,7,9,10,11]),
     ("migration41",[1,6]),
-    ("migration")
-
+    ("itsn1",),
+    ("itsn2",)
 ]
