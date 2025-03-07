@@ -4,7 +4,7 @@ import shutil
 from tqdm import tqdm
 from utils.filegetter import adir
 from fetch_images import sourceMap, get_images, try_copy_image
-from utils.filenames import filename_format,filename_regex_anybasename,alphanumeric_match,tiff_ext
+from libraries.filenames import filename_format,filename_regex_anybasename,alphanumeric_match,tiff_ext
 import os
 import re
 import gsutilwrap
@@ -33,9 +33,6 @@ for im in tqdm(os.listdir(images_in)):
     offsets.remove(0)
 
     s = sourceMap[base]
-    if not isinstance(s,tuple):
-        s = (s,)
-
     if include_center_image:
         dest = images_out/im
         if not os.path.exists(dest):
@@ -67,7 +64,7 @@ for im in tqdm(os.listdir(images_in)):
         if os.path.exists(dest):
             continue
         else:
-            copy_image(s,name,dest)
+            try_copy_image(s,name,dest)
     
 
         

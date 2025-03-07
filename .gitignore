@@ -16,3 +16,5 @@ gcp_transfer/**
 out/**
 labeledmasks/**
 .ipynb_checkpoints/**
+local/**
+meta/**

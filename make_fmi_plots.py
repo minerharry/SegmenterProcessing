@@ -29,11 +29,6 @@ def strsuffix(exp:str,suffixes=None):
         exp = re.sub(r,'',exp)
     return exp
 
-K = TypeVar("K")
-class IdentityDefault(dict[K,K]):
-    def __missing__(self, key):
-        return key
-
 def StringableTrackAnalysis(file):
     tracks:dict[str,dict[str,dict[str,Any]]] = DefaultDict(dict)
     with (open(file,'r') if not isinstance(file,TextIO) else nullcontext(file)) as f:
