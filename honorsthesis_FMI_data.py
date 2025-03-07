@@ -26,3 +26,9 @@ itsn_auto_movies = [
     ("itsn1",),
     ("itsn2",)
 ]
+
+
+plc_auto_movies = [
+    ("plcpeg3",),
+    ("plcpeg4",),
+]
