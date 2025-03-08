@@ -1,0 +1,25 @@
+"NDInfoFile", Version 2.0
+"Description", JR20 OptoTiam1-AIO on 1 ug/mL FN 1 ug/mL dox
+3 notches LED w/ 100% current limit, constant illumination
+
+"StartTime1", 20230601 13:18:53
+"DoTimelapse", TRUE
+"NTimePoints", 289
+"DoStage", TRUE
+"NStagePositions", 10
+"Stage1", "control1"
+"Stage2", "control2"
+"Stage3", "control3"
+"Stage4", "down1"
+"Stage5", "down2"
+"Stage6", "down3"
+"Stage7", "up1"
+"Stage8", "up2"
+"Stage9", "up3"
+"Stage10", "up4"
+"DoWave", FALSE
+"NWavelengths", 0
+"DoZSeries", FALSE
+"WaveInFileName", FALSE
+"NEvents", 0
+"EndFile"

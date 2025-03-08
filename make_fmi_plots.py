@@ -4,6 +4,7 @@ from csv import DictReader, DictWriter
 import csv
 import itertools
 from logging import raiseExceptions
+import math
 from operator import itemgetter
 import os
 from pathlib import Path
@@ -13,8 +14,9 @@ from typing import Any, DefaultDict, Iterable, Literal, Sequence, TextIO, TypeVa
 from matplotlib import pyplot as plt
 from ordered_set import OrderedSet
 from utils.filegetter import afns,afn
+from utils.identity_default import IdentityDefault
 from utils.parse_tracks import MergedTrackAnalysis, TrackAnalysis
-from libraries.parsend import StageDict, group_stage_basenames
+from libraries.parsend import StageDict, group_stage_basenames, try_fetch_nd
 from utils.statplots import plot_CI
 from utils.zipdict import zip_dict
 
@@ -39,7 +41,7 @@ def StringableTrackAnalysis(file):
     return dict(tracks)
 
 groupspec = None|dict[str,Iterable[tuple[str,int|tuple[int,int]]]]
-def make_fmi_plots(filenames:Sequence[str|tuple[str,...]|TrackAnalysis],axes:list[Literal["x","y"]]="y",selections:list[list[tuple[int|tuple[int,int],int]]|None]|list[tuple[int|tuple[int,int],int]]|None=None,auto_groups:bool|Iterable[bool]=True,names:None|Iterable[str|None]=None,grouplist:None|groupspec|Iterable[groupspec]=None):
+def make_fmi_plots(filenames:Sequence[str|tuple[str,...]|TrackAnalysis],axes:list[Literal["x","y"]]="y",selections:list[list[tuple[int|tuple[int,int],int]]|None]|list[tuple[int|tuple[int,int],int]]|None=None,auto_groups:bool|Iterable[bool]=True,names:None|Iterable[str|None]=None,grouplist:None|groupspec|Iterable[groupspec]=None,rose=True):
     """Create FMI plots from tracking data analysis. Creates one figure per filename. Can accept multiple filenames, which will produce a MergedTrackAnalysis. Also accepts an existing TrackAnalysis object; make sure to specify names if so.
     
     filenames:Sequence[str|tuple[str]|TrackAnalysis], sequence of analysis inputs. Each entry must be an analysis object, a path to a TrackAnalysis .csv file, or
@@ -54,7 +56,10 @@ def make_fmi_plots(filenames:Sequence[str|tuple[str,...]|TrackAnalysis],axes:lis
     selections: which tracks to include from each stage. For each track analysis, the selection spec is a list of (stage,track#) tuples. If the analysis is a MergedTrackAnalysis, stage can either be an integer or a tuple (file#,stage#). 
     Selection spec can also be passed as a single list to apply the same selection to each analysis, or as a list of lists to apply different selections to each one.
 
-    auto_groups:bool whether to use contextual .nd files/folder structure to automatically assign groups based on metamorph stage names."""
+    auto_groups:bool whether to use contextual .nd files/folder structure to automatically assign groups based on metamorph stage names.
+    
+    rose:bool whether to also make rose plots. Will make a folder of individual rose plots per figure of fmis, with labeled sub-images
+    """
 
 
     if len(filenames) == 0:
@@ -85,8 +90,6 @@ def make_fmi_plots(filenames:Sequence[str|tuple[str,...]|TrackAnalysis],axes:lis
                     name = "manual " + name
                 else:
                     name = "automatic " + name
-                if selection:
-                    name = "selected " + name
             elif isinstance(n,tuple):
                 loc = tuple((Path(p) for p in n))
                 assert ni is not None
@@ -94,9 +97,15 @@ def make_fmi_plots(filenames:Sequence[str|tuple[str,...]|TrackAnalysis],axes:lis
                 loc = None
                 assert ni is not None
 
-            out = f"output/analysis/figures/{name}"
-            plt.figure(name,figsize=(5.5,4.8))
-            plt.title(name + " " + t)
+            assert name != ""
+            if selection:
+                name = "selected " + name
+
+            figfolder = Path(f"output/analysis/figures/")
+            fmi_out = figfolder/"fmi"/f"{name}.png"
+            rose_out = figfolder/"rose"/f"{name}"
+            fmifig = plt.figure(name,figsize=(5.5,4.8))
+            fmiax = fmifig.subplots(1,1)
 
             if loc is None:
                 pass
@@ -124,13 +133,25 @@ def make_fmi_plots(filenames:Sequence[str|tuple[str,...]|TrackAnalysis],axes:lis
                     exp = l.parent.name
                     exp = strsuffix(exp)
                     images = l.parent.parent.parent/"images"/exp #to gcp_transfer, then images twice
-                    nds = [x.path for x in os.scandir(images) if x.name.endswith(".nd")]
-                    print("found nd file:",nds[0]);
-                    maps = StageDict(nds[0]);
-                    grps = group_stage_basenames(maps)
-                    if multi:
-                        grps = {f"{exp}: nam":val for nam,val in grps.items()}
-                    groups.update(grps)
+                    nds = []
+                    if images.exists():
+                        nds = [x.path for x in os.scandir(images) if x.name.endswith(".nd")]
+                        print("found nd file:",nds[0]);
+                    else:
+                        try:
+                            nd = try_fetch_nd(exp,as_file=True)
+                            print("remote .nd found: ",nd)
+                            nds = [nd]
+                        except FileNotFoundError:
+                            auto_group = False
+                            print("auto grouping aborted")
+
+                    if nds:
+                        maps = StageDict(nds[0]);
+                        grps = group_stage_basenames(maps)
+                        if multi:
+                            grps = {f"{exp}: nam":val for nam,val in grps.items()}
+                        groups.update(grps)
             else:
                 auto_group = False
                     
@@ -140,7 +161,7 @@ def make_fmi_plots(filenames:Sequence[str|tuple[str,...]|TrackAnalysis],axes:lis
                 groups = {f"Movie{i}":[(f"Movie{i}",i)] for i in movies};
 
 
-            orientation = "horizontal"
+            orientation = "vertical"
 
             poss = range(1,len(groups)+1)
 
@@ -152,19 +173,26 @@ def make_fmi_plots(filenames:Sequence[str|tuple[str,...]|TrackAnalysis],axes:lis
 
             fmidict = {}
 
+            rosefigs = {}
+
+            displayNames = IdentityDefault({"control":"No Light","down":"Steep","up":"Shallow"})# IdentityDefault();
+
             pos_selection_exists:dict[int,bool] = {}
             # print(groups)
             for (groupName,stages),pos in zip([(k,groups[k]) for k in order],poss):
                 # print(groupName,pos)
                 
-                fmidict[groupName] = fmis = []
+                fmidict[groupName] = select_fmis = []
                 fullfmis = []
                 color = []
+
+                select_roses = []
+                full_roses:list[tuple[float,float]] = []
 
                 # print(stages)
                 for name,num in stages:
                     if name in excludeName or num in exclude:
-                        print("continuing")
+                        # print("continuing")
                         continue;
                     factor = -1 if groupName in flipGroups else 1
                     if num not in data:
@@ -173,7 +201,13 @@ def make_fmi_plots(filenames:Sequence[str|tuple[str,...]|TrackAnalysis],axes:lis
                         color.append("red" if selection and (num,tid) not in selection else "black")
                         fullfmis.append(float(dat[f"FMI.{t}"])*factor)
                         if selection and (num,tid) in selection:
-                            fmis.append(float(dat[f"FMI.{t}"])*factor)
+                            select_fmis.append(float(dat[f"FMI.{t}"])*factor)
+                        if rose:
+                            # print((float(dat[f"Displacement.x (microns)"]),float(dat[f"Displacement.y (microns)"])))
+                            full_roses.append((float(dat[f"Displacement.x (microns)"]),float(dat[f"Displacement.y (microns)"])))
+                            if selection and (num,tid) in selection:
+                                select_roses.append((float(dat[f"Displacement.x (microns)"]),(float(dat[f"Displacement.y (microns)"]))))
+                            
                 # print(groupName)
                 if len(fullfmis) == 0:
                     print(f"No fmi data for group {groupName}, skipping...")
@@ -181,15 +215,33 @@ def make_fmi_plots(filenames:Sequence[str|tuple[str,...]|TrackAnalysis],axes:lis
                 # print(fullfmis)
 
                 # print(stages)
+                print(f"plotting group {groupName} with {len(select_fmis)} samples")
+                plot_CI(pos,fullfmis,orientation=orientation,value_marker='.',values_color=color,plot_values=True,mean_color="black",interval_color="red",plot_significance=True,ax=fmiax)
+                if len(select_fmis) != 0:
+                    plot_CI(pos+0.5,select_fmis,orientation=orientation,value_marker='.',plot_values=True,plot_mean=True,mean_color="purple",interval_color="black",plot_significance=True,ax=fmiax)
+                pos_selection_exists[pos] = (len(select_fmis) != 0)
 
-                print(f"plotting group {groupName} with {len(fmis)} samples")
-                plot_CI(pos,fullfmis,orientation="horizontal",value_marker='.',values_color=color,plot_values=True,mean_color="black",interval_color="red",plot_significance=True)
-                if len(fmis) != 0:
-                    plot_CI(pos+0.5,fmis,orientation="horizontal",value_marker='.',plot_values=True,plot_mean=True,mean_color="purple",interval_color="black",plot_significance=True)
-                pos_selection_exists[pos] = (len(fmis) != 0)
+
+                if rose:
+                    rosefigs[groupName] = rosefig = plt.figure()
+                    from utils.circular_hist import circular_hist
+                    ax = rosefig.subplots(1,1,subplot_kw={"projection":"polar"})
+                    angles = list(map(lambda p: math.atan2(*p),full_roses));
+                    print(angles)
+                    circular_hist(ax,angles)
+                    ax.set_title(displayNames[groupName])
+                    if len(select_roses) > 0:
+                        rosefigs["selected " + groupName] = rosefig = plt.figure()
+                        ax = rosefig.subplots(1,1,subplot_kw={"projection":"polar"})
+                        angles = list(map(lambda p: math.atan2(*p),select_roses));
+                        print(angles)
+                        circular_hist(ax,angles)
+                        ax.set_title("selected " + displayNames[groupName])
+                    # plt.show()
 
 
-            displayNames = IdentityDefault(); #IdentityDefault({"control":"No Light","down":"Steep","up":"Shallow"})
+
+
 
             dnames = [displayNames[n] for n in order]
             print(poss,dnames)
@@ -199,18 +251,20 @@ def make_fmi_plots(filenames:Sequence[str|tuple[str,...]|TrackAnalysis],axes:lis
             dnames += ["selected " + d for p,d in zip(poss,dnames) if pos_selection_exists[p]]
             poss += [p + 0.5 for p in poss if pos_selection_exists[p]]
             print(poss,dnames)
+            
+            plt.title(name + " " + t)
             if orientation == "vertical":
-                plt.ylabel("FMI")
-                plt.ylim(-0.5,0.5)
-                plt.xlabel("Gradient Position")
-                plt.xticks(poss,dnames)
-                plt.plot([0,poss[-1]+1],[0,0],linestyle='--',color="black")
+                fmiax.set_ylabel("FMI")
+                fmiax.set_ylim(-0.5,0.5)
+                fmiax.set_xlabel("Gradient Position")
+                fmiax.set_xticks(poss,labels=dnames)
+                fmiax.plot([0,poss[-1]+1],[0,0],linestyle='--',color="black")
             else:
-                plt.xlabel("FMI")
-                plt.xlim(-0.5,0.5)
-                plt.ylabel("Gradient Position")
-                plt.yticks(poss,dnames)
-                plt.plot([0,0],[0,poss[-1]+1],linestyle='--',color="black")
+                fmiax.set_xlabel("FMI")
+                fmiax.set_xlim(-0.5,0.5)
+                fmiax.set_ylabel("Gradient Position")
+                fmiax.set_yticks(poss,labels=dnames)
+                fmiax.plot([0,0],[0,poss[-1]+1],linestyle='--',color="black")
             # dox = "y" in input("has dox?\n")
             # manual = "Manual" if "$manual" in str(anal_location) else "Automatic"
             # dox = "1 ug per mL Dox" if "53" in str(anal_location) else "No Dox";
@@ -218,8 +272,17 @@ def make_fmi_plots(filenames:Sequence[str|tuple[str,...]|TrackAnalysis],axes:lis
             # # plt.title(f"OptoTiEXITam1 {'1 ug/mL' if dox else 'No'} Dox {'Manual' if manual else 'Automatic'} Tracking");
             # smoothing = "Raw" if "raw" in str(anal_location) else "Smoothed"
             # name = f"{dox} {smoothing} {manual} Tracks"
+            # plt.show()
 
-            plt.savefig(f"{out}.png")
+            fmi_out.mkdir(parents=True,exist_ok=True)
+            fmifig.savefig(f"{fmi_out}.png")
+
+            if rose:
+                rose_out.mkdir(parents=True,exist_ok=True)
+                for n,r in rosefigs.items():
+                    r.savefig(rose_out/f"{n}.png")
+
+            
 
     # plt.show()
 
@@ -230,7 +293,7 @@ if __name__ == "__main__":
     # #manual selections:
     # man = [(1, 2), (1, 5), (1, 1), (1, 11), (1, 9), (2, 4), (2, 1), (2, 2), (2, 7), (3, 12), (3, 8), (3, 11), (3, 2), (3, 1), (3, 15), (3, 4), (3, 15), (4, 1), (4, 13), (4, 2), (4, 9), (4, 4), (4, 14), (4, 15), (4, 12), (4, 7), (4, 11), (4, 8), (5, 12), (5, 6), (5, 5), (5, 2), (5, 9), (5, 3), (5, 3), (6, 2), (6, 9), (6, 11), (6, 8), (6, 1), (6, 14), (6, 15), (6, 6), (6, 6), (6, 16), (7, 6), (7, 10), (7, 5), (7, 3), (7, 1), (7, 2), (7, 9), (7, 1), (7, 4), (8, 3), (9, 12), (9, 10), (9, 4), (9, 9), (9, 3), (9, 7), (10, 4), (10, 10), (10, 3), (10, 8), (10, 1)]
 
-    names = [afn(title="Select Track Analysis (csv) files",filetypes=[("Track Analysis CSV Files","*.csv")])]
+    names = [afn(skip_popup=True,key="Track Analysis",title="Select Track Analysis (csv) files",filetypes=[("Track Analysis CSV Files","*.csv")])]
     
     # selection:list[list[tuple[int,int]]|None] = [man if "$manual" in str(n) else auto for n in names]
 

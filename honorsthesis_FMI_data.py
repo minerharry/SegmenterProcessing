@@ -23,12 +23,20 @@ itsn_auto_movies = [
     ("migration43",[11,12]),
     ("migration42",[6,7,9,10,11]),
     ("migration41",[1,6]),
-    ("itsn1",),
+    ("itsn1_better",),
     ("itsn2",)
 ]
 
-
-plc_auto_movies = [
-    ("plcpeg3",),
-    ("plcpeg4",),
+itsn_manual_movies = [
+    ("itsn1",),
+    ("itsn2",),
 ]
+
+
+def 
+
+
+# plc_auto_movies = [
+#     ("plcpeg3",),
+#     ("plcpeg4",),
+# ]
