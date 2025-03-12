@@ -2,6 +2,7 @@ from collections import UserDict
 from contextlib import nullcontext
 from csv import DictReader, DictWriter
 import csv
+from dataclasses import InitVar, asdict, dataclass, field
 import itertools
 from logging import raiseExceptions
 import math
@@ -9,10 +10,9 @@ from operator import itemgetter
 import os
 from pathlib import Path
 import re
-from typing import Any, DefaultDict, Iterable, Literal, Sequence, TextIO, TypeVar
+from typing import Any, DefaultDict, Iterable, Literal, NamedTuple, Sequence, Sized, TextIO, TypeVar
 
 from matplotlib import pyplot as plt
-from ordered_set import OrderedSet
 from utils.filegetter import afns,afn
 from utils.identity_default import IdentityDefault
 from utils.parse_tracks import MergedTrackAnalysis, TrackAnalysis
@@ -40,8 +40,21 @@ def StringableTrackAnalysis(file):
                 tracks[row["movie"]][row["trackid"]] = row;
     return dict(tracks)
 
+
+def sizematch(i1:Iterable,i2:Sized):
+    return not isinstance(i1,Sized) or len(i1) == len(i2)
 groupspec = None|dict[str,Iterable[tuple[str,int|tuple[int,int]]]]
-def make_fmi_plots(filenames:Sequence[str|tuple[str,...]|TrackAnalysis],axes:list[Literal["x","y"]]="y",selections:list[list[tuple[int|tuple[int,int],int]]|None]|list[tuple[int|tuple[int,int],int]]|None=None,auto_groups:bool|Iterable[bool]=True,names:None|Iterable[str|None]=None,grouplist:None|groupspec|Iterable[groupspec]=None,rose=True):
+def make_fmi_plots(
+        filenames:Sequence[str|tuple[str,...]|TrackAnalysis]=None,
+        axes:list[Literal["x","y"]]|Literal["x","y"]="y",
+        selections:list[list[tuple[int|tuple[int,int],int]]|None]|list[tuple[int|tuple[int,int],int]]|None=None,
+        auto_groups:bool|Iterable[bool]=True,
+        names:None|Iterable[str|None]=None,
+        grouplist:None|groupspec|Iterable[groupspec]=None,
+        exclude_stages:list[int|tuple[int,int]|str]|list[list[int|tuple[int,int]|str]]|None=None,
+        figfolder:str|Path = Path(f"output/analysis/figures/"),
+        records:bool=True,
+        rose:bool=True,):
     """Create FMI plots from tracking data analysis. Creates one figure per filename. Can accept multiple filenames, which will produce a MergedTrackAnalysis. Also accepts an existing TrackAnalysis object; make sure to specify names if so.
     
     filenames:Sequence[str|tuple[str]|TrackAnalysis], sequence of analysis inputs. Each entry must be an analysis object, a path to a TrackAnalysis .csv file, or
@@ -60,27 +73,38 @@ def make_fmi_plots(filenames:Sequence[str|tuple[str,...]|TrackAnalysis],axes:lis
     
     rose:bool whether to also make rose plots. Will make a folder of individual rose plots per figure of fmis, with labeled sub-images
     """
-
+    if filenames is None:
+        raise ValueError("Must supply track analyses!")
 
     if len(filenames) == 0:
         return
     if isinstance(auto_groups,bool):
         auto_groups = itertools.cycle([auto_groups])
+    selects:Iterable[list[tuple[int|tuple[int,int],int]]|None] = itertools.cycle([[]])
     if selections is None:
-        selections = itertools.cycle([None])
+        selects = itertools.cycle([None])
     else:
-        assert len(selections) > 0 
         if isinstance(selections[0],tuple):
-            selections = itertools.cycle([selections])
+            selects = itertools.cycle([selections]) #type:ignore
+    assert sizematch(selects,filenames)
+    
+    exclude:Iterable[list[int|str|tuple[int,int]]] = itertools.cycle([[]]);
+    if exclude_stages is not None:
+        if not isinstance(exclude_stages[0],list):
+            exclude = itertools.cycle(exclude_stages)
+    assert sizematch(exclude,filenames)
     if names is None:
         names = itertools.cycle([None])
+    assert sizematch(names,filenames)
     if grouplist is None:
         grouplist = itertools.cycle([None])
     elif isinstance(grouplist,dict):
-        grouplist = itertools.cycle([grouplist])
+        grouplist:Iterable[groupspec] = itertools.cycle([grouplist])
+    assert sizematch(grouplist,filenames)
     groups:None|dict[str,Iterable[tuple[str,int|tuple[int,int]]]]
+    excludes:list[int|str|tuple[int,int]]
     for t in axes:
-        for n,selection,auto_group,ni,groups in zip(filenames,selections,auto_groups,names,grouplist):
+        for n,selection,auto_group,ni,groups,excludes in zip(filenames,selects,auto_groups,names,grouplist,exclude):
 
             name = ni or ""
             if isinstance(n,str):
@@ -101,13 +125,15 @@ def make_fmi_plots(filenames:Sequence[str|tuple[str,...]|TrackAnalysis],axes:lis
             if selection:
                 name = "selected " + name
 
-            figfolder = Path(f"output/analysis/figures/")
-            fmi_out = figfolder/"fmi"/f"{name}.png"
+            figfolder = Path(figfolder)
+            fmi_out = figfolder/"fmi"/f"{name}"
             rose_out = figfolder/"rose"/f"{name}"
             fmifig = plt.figure(name,figsize=(5.5,4.8))
             fmiax = fmifig.subplots(1,1)
 
             if loc is None:
+                assert isinstance(n,TrackAnalysis)
+                data = n
                 pass
             elif isinstance(loc,tuple):
                 data = MergedTrackAnalysis(loc)
@@ -117,9 +143,8 @@ def make_fmi_plots(filenames:Sequence[str|tuple[str,...]|TrackAnalysis],axes:lis
 
             
             
-            exclude:list[int] = [];
-            excludeName:list[str] = [];
-            flipGroups:list[str] = ["up"]
+            
+            flipGroups:list[str] = []
 
 
             if auto_group and groups is None:
@@ -128,8 +153,8 @@ def make_fmi_plots(filenames:Sequence[str|tuple[str,...]|TrackAnalysis],axes:lis
                 if not isinstance(loc,tuple):
                     loc = (loc,)
                 multi = len(loc) > 1
-                groups = {}
-                for l in loc:
+                groups = DefaultDict(list)
+                for i,l in enumerate(loc):
                     exp = l.parent.name
                     exp = strsuffix(exp)
                     images = l.parent.parent.parent/"images"/exp #to gcp_transfer, then images twice
@@ -148,13 +173,25 @@ def make_fmi_plots(filenames:Sequence[str|tuple[str,...]|TrackAnalysis],axes:lis
 
                     if nds:
                         maps = StageDict(nds[0]);
-                        grps = group_stage_basenames(maps)
-                        if multi:
-                            grps = {f"{exp}: nam":val for nam,val in grps.items()}
-                        groups.update(grps)
+                        grps = {k:[(v1,(i,v2)) for (v1,v2) in v] for k,v in group_stage_basenames(maps).items()}
+                        print("groupies:",grps)
+                        
+                        ##FORCE MERGE
+                        if False:
+                            grp2 = {}
+                            if "control" in grps:
+                                grp2 = {"control":grps["control"]}
+                                del grps["control"]
+                            merge = sum(grps.values(),[])
+                            grp2["illuminated"] = merge
+                            grps = grp2
+                        
+                        for k,v in grps.items():
+                            groups[k] += v
             else:
                 auto_group = False
                     
+            print(f"groups: {groups}")
 
             movies = list(data.keys());
             if groups is None:
@@ -166,43 +203,49 @@ def make_fmi_plots(filenames:Sequence[str|tuple[str,...]|TrackAnalysis],axes:lis
             poss = range(1,len(groups)+1)
 
 
-            order = OrderedSet(["down","downshallow","control","upshallow","up"] if auto_group else groups.keys())
-            print(order)
-            order.intersection_update(groups.keys())
-            print(order)
+            order = [o for o in ["down","downshallow","control","upshallow","up","illuminated"] if o in groups.keys()] if auto_group else groups.keys()
+            
+            removed = [k for k in groups.keys() if k not in order]
+            if len(removed) > 0:
+                print("Autogroup Removed the following Stages:",removed)
 
-            fmidict = {}
+            fmidict:dict[str,tuple[list[float],list[float]]] = {}
+            rosedict = {}
 
             rosefigs = {}
 
-            displayNames = IdentityDefault({"control":"No Light","down":"Steep","up":"Shallow"})# IdentityDefault();
+            displayNames = IdentityDefault({"control":"No Light","down":"Down Steep","up":"Up Moderate","upshallow":"Up Shallow","illuminated":"Light"})# IdentityDefault();
 
             pos_selection_exists:dict[int,bool] = {}
             # print(groups)
             for (groupName,stages),pos in zip([(k,groups[k]) for k in order],poss):
                 # print(groupName,pos)
-                
-                fmidict[groupName] = select_fmis = []
+                select_fmis = []
                 fullfmis = []
+                fmidict[groupName] = (fullfmis,select_fmis)
                 color = []
 
                 select_roses = []
                 full_roses:list[tuple[float,float]] = []
+                rosedict[groupName] = (full_roses,select_roses)
 
                 # print(stages)
-                for name,num in stages:
-                    if name in excludeName or num in exclude:
+                for nam,num in stages:
+                    if nam in excludes or num in excludes:
                         # print("continuing")
                         continue;
-                    factor = -1 if groupName in flipGroups else 1
+                    # factor = -1 if groupName in flipGroups else 1
+                    factor = -1
                     if num not in data:
                         continue
                     for tid,dat in data[num].items():
                         color.append("red" if selection and (num,tid) not in selection else "black")
+                           
                         fullfmis.append(float(dat[f"FMI.{t}"])*factor)
                         if selection and (num,tid) in selection:
                             select_fmis.append(float(dat[f"FMI.{t}"])*factor)
                         if rose:
+                            # print(dat)
                             # print((float(dat[f"Displacement.x (microns)"]),float(dat[f"Displacement.y (microns)"])))
                             full_roses.append((float(dat[f"Displacement.x (microns)"]),float(dat[f"Displacement.y (microns)"])))
                             if selection and (num,tid) in selection:
@@ -216,55 +259,59 @@ def make_fmi_plots(filenames:Sequence[str|tuple[str,...]|TrackAnalysis],axes:lis
 
                 # print(stages)
                 print(f"plotting group {groupName} with {len(select_fmis)} samples")
-                plot_CI(pos,fullfmis,orientation=orientation,value_marker='.',values_color=color,plot_values=True,mean_color="black",interval_color="red",plot_significance=True,ax=fmiax)
+                plot_CI(pos,fullfmis,orientation=orientation,value_marker='.',values_color=color,plot_values=False,mean_color="black",interval_color="black",plot_significance=True,ax=fmiax)
                 if len(select_fmis) != 0:
-                    plot_CI(pos+0.5,select_fmis,orientation=orientation,value_marker='.',plot_values=True,plot_mean=True,mean_color="purple",interval_color="black",plot_significance=True,ax=fmiax)
+                    plot_CI(pos+0.5,select_fmis,orientation=orientation,value_marker='.',plot_values=False,plot_mean=True,mean_color="purple",interval_color="black",plot_significance=True,ax=fmiax)
                 pos_selection_exists[pos] = (len(select_fmis) != 0)
 
-
+                if groupName == "up4 y":
+                    from IPython import embed; embed()
                 if rose:
                     rosefigs[groupName] = rosefig = plt.figure()
                     from utils.circular_hist import circular_hist
                     ax = rosefig.subplots(1,1,subplot_kw={"projection":"polar"})
-                    angles = list(map(lambda p: math.atan2(*p),full_roses));
-                    print(angles)
+                    angles = list(map(lambda p: math.atan2(-p[1],p[0]),full_roses));
+                    # print(angles)
                     circular_hist(ax,angles)
-                    ax.set_title(displayNames[groupName])
+                    dispname = displayNames[groupName]
+                    if groupName in flipGroups:
+                        dispname += "*"
+                    ax.set_title(dispname)
                     if len(select_roses) > 0:
                         rosefigs["selected " + groupName] = rosefig = plt.figure()
                         ax = rosefig.subplots(1,1,subplot_kw={"projection":"polar"})
-                        angles = list(map(lambda p: math.atan2(*p),select_roses));
-                        print(angles)
+                        angles = list(map(lambda p: math.atan2(-p[1],p[0]),select_roses));
+                        # print(angles)
                         circular_hist(ax,angles)
-                        ax.set_title("selected " + displayNames[groupName])
+                        ax.set_title("selected " + dispname)
                     # plt.show()
 
 
 
 
 
-            dnames = [displayNames[n] for n in order]
-            print(poss,dnames)
+            dnames = [displayNames[n] + ("*" if n in flipGroups else "") for n in order]
+            # print(poss,dnames)
             dnames = [n for p,n in zip(poss,dnames) if p in pos_selection_exists]
             poss = [p for p in poss if p in pos_selection_exists] 
-            print(poss,dnames)
+            # print(poss,dnames)
             dnames += ["selected " + d for p,d in zip(poss,dnames) if pos_selection_exists[p]]
             poss += [p + 0.5 for p in poss if pos_selection_exists[p]]
-            print(poss,dnames)
+            # print(poss,dnames)
             
             plt.title(name + " " + t)
             if orientation == "vertical":
                 fmiax.set_ylabel("FMI")
-                fmiax.set_ylim(-0.5,0.5)
+                fmiax.set_ylim(-0.25,0.1)
                 fmiax.set_xlabel("Gradient Position")
                 fmiax.set_xticks(poss,labels=dnames)
-                fmiax.plot([0,poss[-1]+1],[0,0],linestyle='--',color="black")
+                fmiax.plot([0.5,poss[-1]+0.5],[0,0],linestyle='--',color="black")
             else:
                 fmiax.set_xlabel("FMI")
-                fmiax.set_xlim(-0.5,0.5)
+                # fmiax.set_xlim(-0.5,0.5)
                 fmiax.set_ylabel("Gradient Position")
                 fmiax.set_yticks(poss,labels=dnames)
-                fmiax.plot([0,0],[0,poss[-1]+1],linestyle='--',color="black")
+                fmiax.plot([0,0],[0.5,poss[-1]+0.5],linestyle='--',color="black")
             # dox = "y" in input("has dox?\n")
             # manual = "Manual" if "$manual" in str(anal_location) else "Automatic"
             # dox = "1 ug per mL Dox" if "53" in str(anal_location) else "No Dox";
@@ -274,8 +321,77 @@ def make_fmi_plots(filenames:Sequence[str|tuple[str,...]|TrackAnalysis],axes:lis
             # name = f"{dox} {smoothing} {manual} Tracks"
             # plt.show()
 
-            fmi_out.mkdir(parents=True,exist_ok=True)
+            fmi_out.parent.mkdir(parents=True,exist_ok=True)
             fmifig.savefig(f"{fmi_out}.png")
+            
+            if records:
+                if selection:
+                    raise NotImplemented() #simply doesn't do it
+                datapath = Path(fmi_out)/"data.csv"
+                datapath.parent.mkdir(parents=True,exist_ok=True)
+                import csv
+                with open(datapath,"w") as f:
+                    writer = csv.writer(f)
+                    groupnames = fmidict.keys()
+                    writer.writerow(groupnames)
+                    for fmis in itertools.zip_longest(*[fmidict[g][0] for g in groupnames]):
+                        writer.writerow(fmis)
+                               
+                
+                recordpath = Path(fmi_out)/"record.json"
+                @dataclass
+                class StageInfo:
+                    filename:str
+                    stagenum:int
+                    stagename:str
+                    cellcount:int
+                group_sources = {}
+
+                for name,stages in groups.items():
+                    group_sources[name] = infos = []
+                    for stagename,key in stages:
+                        if key in excludes or stagename in excludes:
+                            continue
+                        if key not in data:
+                            continue
+                        num = len(data[key])
+                        file:Path
+                        stagenum:int
+                        if isinstance(key,tuple):
+                            assert isinstance(loc,tuple)
+                            file = loc[key[0]]
+                            stagenum = key[1]
+                        else:
+                            assert isinstance(loc,Path),(key)
+                            file = loc
+                            stagenum = key
+                        info = StageInfo(str(file),stagenum,stagename,num);
+                        infos.append(info)
+                
+                
+                @dataclass
+                class FMIRecord: #params, sources, N
+                    # groups:InitVar[dict[str, Iterable[tuple[str, int | tuple[int, int]]]]]
+                    group_sources:dict[str,list[StageInfo]] #list of (filename,stage#,stagename)
+
+                    total_counts:dict[str,int] = field(init=False)
+
+                    def __post_init__(self):
+                        self.total_counts = {group:self.total_count(group) for group in self.group_sources}
+
+                    def total_count(self,group:str):
+                        return sum([k.cellcount for k in self.group_sources[group]])
+
+
+                record = FMIRecord(group_sources)
+
+                import json
+                with open(recordpath,"w") as f:
+                    json.dump(asdict(record),f,indent=1)
+
+                                
+
+
 
             if rose:
                 rose_out.mkdir(parents=True,exist_ok=True)
@@ -298,7 +414,7 @@ if __name__ == "__main__":
     # selection:list[list[tuple[int,int]]|None] = [man if "$manual" in str(n) else auto for n in names]
 
     # groups:groupspec = {"JimUp (same as HUp)":[("up1 (replicate)",4)],"MitchUp":[("up3",3)],"HUp":[("up1",1)],"MarkUp":[("up2",2)],"MitchDown":[("control3",11)],"HDown":[("control1",9)],"MarkDown":[("control2",10)]}
-    make_fmi_plots(names,selections=None,grouplist=None)
+    make_fmi_plots(names,selects=None,grouplist=None)
 
     plt.show()
     

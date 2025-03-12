@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def circular_hist(ax, x, bins=16, density=True, offset=0, gaps=True):
+def circular_hist(ax, x, bins=32, density=True, offset=0, gaps=False):
     """
     Produce a circular histogram of angles on ax.
 

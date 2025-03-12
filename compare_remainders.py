@@ -130,7 +130,7 @@ while True:
 
 
     movie_groups = group_stage_basenames(StageDict(nd))
-    make_fmi_plots([anames[0],anames[0],anames[1],anames[1]],selections=[groups[1],groups[2],groups[4],groups[3]],names=["Auto total","Auto paired","Manual total","Manual paired"],grouplist=movie_groups)
+    make_fmi_plots([anames[0],anames[0],anames[1],anames[1]],selects=[groups[1],groups[2],groups[4],groups[3]],names=["Auto total","Auto paired","Manual total","Manual paired"],grouplist=movie_groups)
 
 
 

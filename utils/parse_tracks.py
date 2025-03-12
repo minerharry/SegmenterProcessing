@@ -76,7 +76,7 @@ class MergedTrackAnalysis(TrackAnalysis):
         if isinstance(key,tuple):
             return self.sub_analyses[key[0]][key[1]]
         else:
-            return self[key]
+            return super().__getitem__(key)
         
     def __contains__(self, key: int|tuple[int,int]) -> builtins.bool:
         if super().__contains__(key):

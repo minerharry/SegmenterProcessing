@@ -110,7 +110,7 @@ def group_stage_basenames(stage_dict:Dict[int,str]):
     invmap = {v:k for k,v in stage_dict.items()};
     order = sorted(invmap.keys());
     print(order)
-    grouped = itertools.groupby([(k,invmap[k]) for k in order],key=lambda t: re.split("\\d",t[0])[0])
+    grouped = itertools.groupby([(k,invmap[k]) for k in order],key=lambda t: re.split("\\d+",t[0])[0])
     groups:Dict[str,List[Tuple[str,int]]] = {}
     for k1,k2 in grouped:
         res = groups[k1] = []
@@ -160,7 +160,8 @@ def try_fetch_nd(exp:str,as_file=False):
             try:
                 s = stat(nd_loc);
             except Exception as e:
-                print(e)
+                import traceback as tb
+                print("\n".join(tb.format_exception(e)))
                 raise e
             # print(s)
             if stat is not None:
@@ -170,6 +171,6 @@ def try_fetch_nd(exp:str,as_file=False):
             raise FileNotFoundError(f"Cannot find .nd file for experiment {exp} [stripped: {exp_nosuffix}]")
     
     if not as_file:
-        nd_data = parseND(nd_local)
+        return parseND(nd_local)
     else:
         return nd_local

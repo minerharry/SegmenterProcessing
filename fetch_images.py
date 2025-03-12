@@ -27,6 +27,39 @@ def singlegpath(path,exp=None):
     if not exp: exp = Path(path).name
     return PurePosixPath("gs://optotaxisbucket/movies")/exp
 
+keydict = bidict({
+    "random" : "2022.1.19 Random Test",
+    "random2" : "2022.2.7 Random Migration",
+    "migration1" :"2022.1.20 Migration Test 1",
+    "migration2" :"2022.2.9 Migration Test 2", 
+    "migration4" :"2022.2.16 Migration Test 4",
+    "migration5" :"2022.2.23 Migration Test 5",
+    "migration6" :"2022.3.1 Migration Test 6", 
+    "migration7" :"2022.3.3 Migration Test 7",
+    "migration8" :"2022.3.8 Migration Test 8",
+    "itsn1" : "2022.12.20 ITSNAIOopto",
+    "itsn1_better" : "2022.12.20 ITSNAIOopto Better Segmentation",
+    "itsn2" : "2023.01.02 ITSNAIOopto2",
+    "migration41" : "2023.1.26 OptoITSN Test 41",
+    "migration42" : "2023.1.31 OptoITSN Test 42",
+    "migration43" : "2023.2.1 OptoITSN Test 43",
+    "migration44" : "2023.2.3 OptoITSN Test 44",
+    "migration45" : "2023.2.5 OptoITSN Test 45",
+    "migration46" : "2023.2.7 OptoITSN Test 46",
+    "migration47" : "2023.2.9 OptoITSN Test 47",
+    "migration50" : "2023.3.24 OptoTiam Exp 50",
+    "migration51" : "2023.3.29 OptoTiam Exp 51",
+    "migration53" : "2023.4.2 OptoTiam Exp 53",
+    "migration54" : "2023.4.3 OptoTiam Exp 54",
+    "migration55" : "2023.4.5 OptoTiam Exp 55",
+    "migration56" : "2023.4.7 OptoTiam Exp 56",
+    "migration61" : "2023.5.17 OptoTiam Exp 61",
+    "migration63" : "2023.5.25 OptoTiam Exp 63",
+    "migration64" : "2023.6.1 OptoTiam Exp 64",
+    "migration65" : "2023.6.2 OptoTiam Exp 65",
+    "migration70" : "2023.10.10 OptoTiam Exp 70",
+})
+
 localMap = bidict({
     "random" : grange("{G}:/Other computers/USB and External Devices/USB_DEVICE_1643752484/2022.1.19 Random Test"), #low cell count
     "random2" : grange("{G}:/Other computers/USB and External Devices/USB_DEVICE_1643752484/2022.2.7 Random Migration"), #some bubbles, but good overall

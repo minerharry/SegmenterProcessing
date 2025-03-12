@@ -18,3 +18,5 @@ labeledmasks/**
 .ipynb_checkpoints/**
 local/**
 meta/**
+gcp_transfer_folder/**
+honors_thesis_output/**
