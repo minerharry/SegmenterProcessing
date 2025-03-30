@@ -203,7 +203,7 @@ def make_fmi_plots(
             poss = range(1,len(groups)+1)
 
 
-            order = [o for o in ["down","downshallow","control","upshallow","up","illuminated"] if o in groups.keys()] if auto_group else groups.keys()
+            order = [o for o in ["downshallow","control","up","down","illuminated"] if o in groups.keys()] if auto_group else groups.keys()
             
             removed = [k for k in groups.keys() if k not in order]
             if len(removed) > 0:
@@ -214,7 +214,7 @@ def make_fmi_plots(
 
             rosefigs = {}
 
-            displayNames = IdentityDefault({"control":"No Light","down":"Down Steep","up":"Up Moderate","upshallow":"Up Shallow","illuminated":"Light"})# IdentityDefault();
+            displayNames = IdentityDefault({"control":"No Light","down":"Down Steep","up":"Up Shallow","upshallow":"Up Shallow","illuminated":"Light"})# IdentityDefault();
 
             pos_selection_exists:dict[int,bool] = {}
             # print(groups)
@@ -389,9 +389,6 @@ def make_fmi_plots(
                 with open(recordpath,"w") as f:
                     json.dump(asdict(record),f,indent=1)
 
-                                
-
-
 
             if rose:
                 rose_out.mkdir(parents=True,exist_ok=True)
@@ -417,8 +414,3 @@ if __name__ == "__main__":
     make_fmi_plots(names,selects=None,grouplist=None)
 
     plt.show()
-    
-    
-
-
-
