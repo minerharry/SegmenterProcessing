@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import TclError, filedialog
-from types import NoneType
+# from types import NoneType
 from typing import Callable, DefaultDict, ParamSpec, Sequence, TypeVar, IO, Type, overload
 import shelve
 import os
@@ -138,13 +138,13 @@ def cachewrap(f:Callable[P,R|None],blanktype:Type[T])->Callable[P,R|T]:
 
 
 
-askdirectory = cachewrap(filedialog.askdirectory,NoneType);
-askopenfilehandle = cachewrap(filedialog.askopenfile,NoneType);
-askopenfilename = cachewrap(filedialog.askopenfilename,NoneType);
+askdirectory = cachewrap(filedialog.askdirectory,type(None));
+askopenfilehandle = cachewrap(filedialog.askopenfile,type(None));
+askopenfilename = cachewrap(filedialog.askopenfilename,type(None));
 askopenfilenames = cachewrap(filedialog.askopenfilenames,list);
 askopenfiles = cachewrap(filedialog.askopenfiles,list);
-asksaveasfilehandle = cachewrap(filedialog.asksaveasfile,NoneType);
-asksaveasfilename = cachewrap(filedialog.asksaveasfilename,NoneType);
+asksaveasfilehandle = cachewrap(filedialog.asksaveasfile,type(None));
+asksaveasfilename = cachewrap(filedialog.asksaveasfilename,type(None));
 adir = askdirectory
 afn = askopenfilename
 afns = askopenfilenames
