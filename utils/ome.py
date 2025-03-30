@@ -2,6 +2,8 @@ from abc import abstractmethod
 from pathlib import Path
 from typing import Any
 from bs4 import BeautifulSoup
+from bs4.element import Tag
+import lxml
 from tifffile import TiffFile
 from utils.bftools import get_omexml_metadata
 from utils.metadata import Metadata
@@ -53,10 +55,43 @@ class OMEMetadata(Metadata):
     def _get_omexml_metadata(self)->BeautifulSoup:
         return parse_ome_metadata(file=self.file,xml=self.xml);
 
+    @property
+    def image(self)->Tag:
+        return self.xml.find_all("Image")[0] #TODO: Multi-image support??
+
+
+    @property
+    def pixels(self)->Tag:
+        pixels = self.image.find("Pixels")
+        return pixels
+    
+    def get_plane_timestamps(self)->tuple[list[str],str]:
+        pixels = self.pixels
+
+        sizeT = int(pixels["SizeT"])
+
+        times = []
+        unit = None
+        # from IPython import embed; embed()
+        for t in range(sizeT):
+            p = pixels.find("Plane",TheT=str(t))
+            times.append(float(p["DeltaT"]))
+            un = p["DeltaTUnit"]
+            if unit is None:
+                unit = un
+            else:
+                assert unit == un
+
+        return times,unit
+    
+    @property
+    def acquisition_date(self)->str:
+        return self.image.find("AcquisitionDate").text
+
     def parse_omexml_metadata(self):
-        xml = self._get_omexml_metadata()
-        image = xml.find_all("Image")[0] #TODO: Multi-image support??
-        pixels = image.find("Pixels")
+        self.xml:BeautifulSoup = self._get_omexml_metadata()
+        pixels = self.pixels
+
         self.size = (float(pixels["PhysicalSizeX"]),float(pixels["PhysicalSizeY"]))
         self.sizeunits = (pixels["PhysicalSizeXUnit"],pixels["PhysicalSizeYUnit"])
 
@@ -65,7 +100,6 @@ class OMEMetadata(Metadata):
         self.position = (float(plane["PositionX"]),float(plane["PositionY"]))
         self.positionunits = (plane["PositionXUnit"],plane["PositionYUnit"])
         assert self.sizeunits == self.positionunits, "Plane and Pixel units don't match! Unit conversions not supported"
-
 
 
 
@@ -80,9 +114,13 @@ def parse_ome_metadata(file:TiffFile|str|Path|None=None,xml:BeautifulSoup|Path|s
                 raise Exception(f"File {file} has no OME-xml metadata!")
             xml.replace("OME:","") #hack to make tifffile ome_metadata compatible with bftools ome_metadata
         else:
-            xml = get_omexml_metadata(str(file));
+            try:
+                import bioformats
+                xml = bioformats.get_omexml_metadata(file)
+            except ImportError:
+                xml = get_omexml_metadata(str(file));
             # print(xmlstring)
-    elif xml:
+    if xml:
         if Path(xml).exists():
             with open(xml,'r') as f:
                 return BeautifulSoup(f,features="lxml-xml")

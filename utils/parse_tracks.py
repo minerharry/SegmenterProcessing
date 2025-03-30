@@ -109,6 +109,7 @@ class QCTracksArray(dict[int, dict[int, list[tuple[int, int]]]]):
     """dict[int, dict[int, list[tuple[int, int]]]]
     Movie- and Trackid- indexed nested dict of lists of (x,y) points"""
     def __new__(cls: type[QCTracksArray], file:TextIO|PathLike|str|QCTracks,centertype:str="approximate-medoid") -> QCTracksArray:
+        """Read tracks from *_qc_tracks.pkl; returns a movie and trackid indexed nested dictionary of arrays of points"""
         tracks:dict[int,dict[int,list[tuple[int,int]]]] = DefaultDict(dict)
         cx, cy = centertype + 'x',centertype + 'y'
         if isinstance(file,dict):
@@ -125,7 +126,6 @@ class QCTracksArray(dict[int, dict[int, list[tuple[int, int]]]]):
         return obj
     
     def __init__(self,*args,**kwargs):
-        """Read tracks from *_qc_tracks.pkl; returns a movie and trackid indexed nested dictionary of arrays of points"""
         pass
 
 class QCTracksDict(dict[int, dict[int, dict[int, tuple[int, int]]]]):

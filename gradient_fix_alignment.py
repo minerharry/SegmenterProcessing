@@ -19,7 +19,7 @@ from matplotlib.markers import MarkerStyle
 from matplotlib.patches import Polygon
 from matplotlib.text import Text
 from pyparsing import Sequence
-from skimage.io import imread
+# from imageio.v3 import imread
 from skimage.exposure import rescale_intensity
 import matplotlib.pyplot as plt
 from tifffile import TiffFile
@@ -258,7 +258,7 @@ def main(force_calibration:bool=False,continue_calibration:bool=False):
 
     ###4x/20x CALIBRATION PATHS
     if True:
-        parent_folder = Path(r"C:\Users\Harrison Truscott\OneDrive - University of North Carolina at Chapel Hill\Bear Lab\optotaxis calibration\data\Gradient Analysis\2025.2.16 OptoPLC S345F Steep Gradient Photoactivation")
+        parent_folder = Path.home()/(r"OneDrive - University of North Carolina at Chapel Hill\Bear Lab\optotaxis calibration\data\Gradient Analysis\2025.2.16 OptoPLC S345F Steep Gradient Photoactivation")
 
         phase_parent_folder = parent_folder
         phase_folder = phase_parent_folder/"Phase Post 4x"
@@ -269,7 +269,8 @@ def main(force_calibration:bool=False,continue_calibration:bool=False):
 
         TIRF_folder = parent_folder
         calibration_folder = TIRF_folder/"Calibration"
-        tirf_images = TIRF_folder/"Multiwave"
+        tirf_images = TIRF_folder
+        # tirf_images = TIRF_folder/"Phase Post 20x"
         # tirf_images = TIRF_folder/"Export_test"
 
         calib_file = (calibration_folder/"calibration.json")
@@ -433,11 +434,18 @@ def main(force_calibration:bool=False,continue_calibration:bool=False):
 
         def get_cell_num(num:int,type:Literal["bf","tirf","epi"]="tirf"):
             # return tirf_images/type/f"cell{num}.tif"
+        
             # return tirf_images/f"cell{num}"/f"cell{num}_{tirf_type_num_map[type]}.tif"
+        
             key = num
-            if not isinstance(key,Sequence):
-                key = (key,97)
-            return tirf_images/f"p_w1Cy5_s{key[0]}_t{key[1]}.TIF"
+            if type == "tirf":
+                if not isinstance(key,Sequence):
+                    key = (key,97)
+                return tirf_images/f"Multiwave/p_w1Cy5_s{key[0]}_t{key[1]}.TIF"
+            else:
+                if isinstance(key,Sequence):
+                    key = key[0]
+                return tirf_images/f"Phase Post 20x/p_s{num}.tif"
         
         def switch_cell_num(num:int,type:Literal["bf","tirf","epi"]="bf",**kwargs):
             print(f"Images/cell{num}")
@@ -648,14 +656,19 @@ def main(force_calibration:bool=False,continue_calibration:bool=False):
             if images is None:
                 images = list(get_all_tirf_nums());
             res = []
-            for im in tqdm(images):
-                if (isinstance(im,int)):
+            for im in tqdm(get_tirf_images()):
+                try:
+                    p = Path(im)
+                    is_path = True
+                except:
+                    is_path = False
+                if (not is_path):
                     impath = get_tirf_image(get_cell_num(im,'tirf'));
                 else:
                     impath = get_tirf_image(im);
                 
                 label:str
-                if isinstance(im,int):
+                if not is_path:
                     label = f"cell{im}";
                 else:
                     from IPython import embed; embed()
