@@ -144,7 +144,7 @@ def make_fmi_plots(
             
             
             
-            flipGroups:list[str] = []
+            flipGroups:list[str] = ["down"] 
 
 
             if auto_group and groups is None:
@@ -215,6 +215,7 @@ def make_fmi_plots(
             rosefigs = {}
 
             displayNames = IdentityDefault({"control":"No Light","down":"Down Steep","up":"Up Shallow","upshallow":"Up Shallow","illuminated":"Light"})# IdentityDefault();
+            displayNames = IdentityDefault({"control":"No Light","down":"Steep","up":"Shallow","upshallow":"Up Shallow","illuminated":"Light"})# IdentityDefault();
 
             pos_selection_exists:dict[int,bool] = {}
             # print(groups)
@@ -234,8 +235,8 @@ def make_fmi_plots(
                     if nam in excludes or num in excludes:
                         # print("continuing")
                         continue;
-                    # factor = -1 if groupName in flipGroups else 1
-                    factor = -1
+                    factor = 1 if groupName in flipGroups else -1
+                    # factor = -1
                     if num not in data:
                         continue
                     for tid,dat in data[num].items():
@@ -274,8 +275,8 @@ def make_fmi_plots(
                     # print(angles)
                     circular_hist(ax,angles)
                     dispname = displayNames[groupName]
-                    if groupName in flipGroups:
-                        dispname += "*"
+                    # if groupName in flipGroups:
+                    #     dispname += "*"
                     ax.set_title(dispname)
                     if len(select_roses) > 0:
                         rosefigs["selected " + groupName] = rosefig = plt.figure()
@@ -290,7 +291,7 @@ def make_fmi_plots(
 
 
 
-            dnames = [displayNames[n] + ("*" if n in flipGroups else "") for n in order]
+            dnames = [displayNames[n] + ("*" if n in flipGroups and False else "") for n in order]
             # print(poss,dnames)
             dnames = [n for p,n in zip(poss,dnames) if p in pos_selection_exists]
             poss = [p for p in poss if p in pos_selection_exists] 
@@ -302,14 +303,14 @@ def make_fmi_plots(
             plt.title(name + " " + t)
             if orientation == "vertical":
                 fmiax.set_ylabel("FMI")
-                fmiax.set_ylim(-0.25,0.1)
-                fmiax.set_xlabel("Gradient Position")
+                fmiax.set_ylim(-0.1,0.25)
+                # fmiax.set_xlabel("Gradient Position")
                 fmiax.set_xticks(poss,labels=dnames)
                 fmiax.plot([0.5,poss[-1]+0.5],[0,0],linestyle='--',color="black")
             else:
                 fmiax.set_xlabel("FMI")
                 # fmiax.set_xlim(-0.5,0.5)
-                fmiax.set_ylabel("Gradient Position")
+                # fmiax.set_ylabel("Gradient Position")
                 fmiax.set_yticks(poss,labels=dnames)
                 fmiax.plot([0,0],[0.5,poss[-1]+0.5],linestyle='--',color="black")
             # dox = "y" in input("has dox?\n")
@@ -322,7 +323,8 @@ def make_fmi_plots(
             # plt.show()
 
             fmi_out.parent.mkdir(parents=True,exist_ok=True)
-            fmifig.savefig(f"{fmi_out}.png")
+            # fmifig.tight_layout(pad=1)
+            fmifig.savefig(f"{fmi_out}.png",dpi=fmifig.dpi)
             
             if records:
                 if selection:
@@ -406,11 +408,11 @@ if __name__ == "__main__":
     # #manual selections:
     # man = [(1, 2), (1, 5), (1, 1), (1, 11), (1, 9), (2, 4), (2, 1), (2, 2), (2, 7), (3, 12), (3, 8), (3, 11), (3, 2), (3, 1), (3, 15), (3, 4), (3, 15), (4, 1), (4, 13), (4, 2), (4, 9), (4, 4), (4, 14), (4, 15), (4, 12), (4, 7), (4, 11), (4, 8), (5, 12), (5, 6), (5, 5), (5, 2), (5, 9), (5, 3), (5, 3), (6, 2), (6, 9), (6, 11), (6, 8), (6, 1), (6, 14), (6, 15), (6, 6), (6, 6), (6, 16), (7, 6), (7, 10), (7, 5), (7, 3), (7, 1), (7, 2), (7, 9), (7, 1), (7, 4), (8, 3), (9, 12), (9, 10), (9, 4), (9, 9), (9, 3), (9, 7), (10, 4), (10, 10), (10, 3), (10, 8), (10, 1)]
 
-    names = [afn(skip_popup=True,key="Track Analysis",title="Select Track Analysis (csv) files",filetypes=[("Track Analysis CSV Files","*.csv")])]
+    names = [afn(key="Track Analysis",title="Select Track Analysis (csv) files",filetypes=[("Track Analysis CSV Files","*.csv")])]
     
     # selection:list[list[tuple[int,int]]|None] = [man if "$manual" in str(n) else auto for n in names]
 
     # groups:groupspec = {"JimUp (same as HUp)":[("up1 (replicate)",4)],"MitchUp":[("up3",3)],"HUp":[("up1",1)],"MarkUp":[("up2",2)],"MitchDown":[("control3",11)],"HDown":[("control1",9)],"MarkDown":[("control2",10)]}
-    make_fmi_plots(names,selects=None,grouplist=None)
+    make_fmi_plots(names,auto_groups=True,grouplist=None)
 
     plt.show()

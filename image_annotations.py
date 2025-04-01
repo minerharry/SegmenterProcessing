@@ -4,6 +4,8 @@ import itertools
 from typing import Callable, Concatenate, Iterable, overload
 import cv2
 import numpy as np
+
+from utils.metadata import Metadata
 textfont = cv2.FONT_HERSHEY_SIMPLEX
 
 
@@ -31,7 +33,8 @@ def applicable[**P,**P2,R:Callable[[np.ndarray,int],np.ndarray]](f:Callable[Conc
     return apply
         
 @applicable
-def draw_scalebar(shape:tuple[int,...],pixelscale:float,scaleLength:float=250,scaleUnit:str="um",textsize:float=1,scaleWidth:int=5,color:tuple[int,int,int]=(255,255,255),thickness:int=2):
+def draw_scalebar(shape:tuple[int,...],pixelscale:float|Metadata,scaleLength:float=250,scaleUnit:str|None="um",textsize:float=1,scaleWidth:int=5,color:tuple[int,int,int]=(255,255,255),thickness:int=2):
+    # if isinstance()
     length = scaleLength/pixelscale
     text = f"{scaleLength} {scaleUnit}"
 
@@ -53,16 +56,22 @@ def draw_scalebar(shape:tuple[int,...],pixelscale:float,scaleLength:float=250,sc
 
 
 @applicable
-def draw_timestamp(shape:tuple[int,...],delta:timedelta|None=None,textsize:float=1,smallformat:str="{minute}:{second:02.2f}",color:tuple[int,int,int]=(255,255,255),thickness:int=2):
+def draw_timestamp(shape:tuple[int,...],delta:timedelta|None=None,textsize:float=1,bigformat:bool=False,color:tuple[int,int,int]=(255,255,255),thickness:int=2):
     def _apply(im,frame:int):
         if delta:
             real = (delta*frame).total_seconds()
-            hour,minute,second = int(real//3600),int((real%3600)//60),real%60
-            time = smallformat % (minute,second) if smallformat and not hour else f"{hour}h {minute}m"
+            if bigformat:
+                hour,minute,second = int(real//3600),int((real%3600)//60),real%60
+                time = f"{hour}h {minute}m"
+            else:
+                minute,second = int(real//60), real%60
+                time = f"{minute}:{second:02.2f}"
         else:
             time = str(frame)
 
-        return cv2.putText(im.copy(),time,(0,im.shape[0]),textfont,textsize,color,thickness)    
+        (label_width, label_height), baseline = cv2.getTextSize(time, textfont, textsize, thickness)
+
+        return cv2.putText(im.copy(),time,(0,im.shape[0]-baseline),textfont,textsize,color,thickness)    
     
     return _apply
 

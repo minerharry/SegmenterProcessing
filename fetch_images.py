@@ -64,7 +64,7 @@ keydict = bidict({
 
 fauto = ()
 
-localMap = bidict({
+localMap = ({
     "random" : grange("{G}:/Other computers/USB and External Devices/USB_DEVICE_1643752484/2022.1.19 Random Test"), #low cell count
     "random2" : grange("{G}:/Other computers/USB and External Devices/USB_DEVICE_1643752484/2022.2.7 Random Migration"), #some bubbles, but good overall
     "migration1" : grange("{G}:/Other computers/USB and External Devices/USB_DEVICE_1643752484/2022.1.20 Migration Test 1"), #blurry
@@ -74,9 +74,9 @@ localMap = bidict({
     "migration6" : grange("{G}:/Other computers/USB and External Devices/USB_DEVICE_1643752484/2022.3.1 Migration Test 6"), #low cell count, some small contamination
     "migration7" : grange("{G}:/Other computers/USB and External Devices/USB_DEVICE_1643752484/2022.3.3 Migration Test 7"),
     "migration8" : grange("{G}:/Other computers/USB and External Devices/USB_DEVICE_1643752484/2022.3.8 Migration Test 8"),
-    "itsn1" : "C:/Users/Harrison Truscott/OneDrive - University of North Carolina at Chapel Hill/Bear Lab/2022.12.20 ITSNAIOopto",
-    "itsn2" : "C:/Users/Harrison Truscott/OneDrive - University of North Carolina at Chapel Hill/Bear Lab/2023.01.02 ITSNAIOopto2/Original",
-    "migration41" : "C:/Users/Harrison Truscott/OneDrive - University of North Carolina at Chapel Hill/Bear Lab/2023.1.26 OptoITSN Test 41",
+    "itsn1" : Path.home()/"OneDrive - University of North Carolina at Chapel Hill/Bear Lab/2022.12.20 ITSNAIOopto",
+    "itsn2" : Path.home()/"OneDrive - University of North Carolina at Chapel Hill/Bear Lab/2023.01.02 ITSNAIOopto2/Original",
+    "migration41" : Path.home()/"OneDrive - University of North Carolina at Chapel Hill/Bear Lab/2023.1.26 OptoITSN Test 41",
     "migration42" : Path("F:/Lab Data/2023.1.31 OptoITSN Test 42/2023.1.31 OptoITSN Test 42"),
     "migration43" : fauto,
     "migration44" : fauto,
@@ -208,7 +208,7 @@ def get_adjacent_images(im:str,width:int,regex:str|re.Pattern=filename_regex_any
 # 
 # sources = ["migration45","migration46","migration47","migration50","migration51","migration53","migration54","migration55","migration56"];
 sources = ["migration47","migration50","migration53","migration55","migration51","migration64","migration70","peg3","peg4"]
-processFolder = Path("C:/Users/Harrison Truscott/OneDrive - University of North Carolina at Chapel Hill/Bear Lab/optotaxis calibration/data/segmentation_iteration_testing/");
+processFolder = Path.home()/("OneDrive - University of North Carolina at Chapel Hill/Bear Lab/optotaxis calibration/data/segmentation_iteration_testing/");
 
 iteration = 5;
 round = 2

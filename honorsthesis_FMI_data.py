@@ -78,7 +78,7 @@ itsn_manual_movies = [
 
 
 suffix_delim = " $"
-def get_analysis_folder(exp_key,suffix:str|None="",analysis_folder = Path('C:/Users/Harrison Truscott/OneDrive - University of North Carolina at Chapel Hill/Bear Lab/optotaxis calibration/data/Segmentation Analysis')):
+def get_analysis_folder(exp_key,suffix:str|None="",analysis_folder = Path.home()/'OneDrive - University of North Carolina at Chapel Hill/Bear Lab/optotaxis calibration/data/Segmentation Analysis'):
     from fetch_images import keydict
     if exp_key not in keydict:
         raise ValueError("Unrecognized source: " + exp_key)

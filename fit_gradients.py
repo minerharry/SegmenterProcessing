@@ -3,7 +3,7 @@ from typing import Literal
 from matplotlib import pyplot as plt
 import numpy as np
 from tqdm import tqdm
-from utils.filegetter import afn,asksaveasfilename
+from utils.filegetter import afn,asksaveasfilename, skip_cached_popups
 from csv import DictReader
 from scipy.optimize import curve_fit
 from skimage.exposure import rescale_intensity
@@ -29,28 +29,28 @@ def read_csv(file,x=None):
 
 #this just to make sure names are standardized. kinda silly.
 Key = Literal["single","double","quad"]
-key:Key = "quad"
+key:Key = "single"
 assert key in Key.__args__,f"Please add key \"{key}\" to the Key literal before continuing"
 
 ##We have two inputs: the idealized gradient ("Ground Truth") and our measured gradient ("measured"). neither the x nor the y units apply, so we need to calculate: 
 # an x scale, a y scale, and an x-offset. Since we know the ground truth should have a y-offset of 0, the min of the gradient dataset is subtracted from itself.
+with skip_cached_popups():
+    from_csv = False
+    if from_csv:
+        grad_groundtruth = afn(key=f"Ground Truth (csv): {key}",defaultextension=".csv",filetypes=[("CSV Files",["*.csv"])])
+        GT = np.array(list(map(float,read_csv(grad_groundtruth))))
 
-from_csv = False
-if from_csv:
-    grad_groundtruth = afn(key=f"Ground Truth (csv): {key}",defaultextension=".csv",filetypes=[("CSV Files",["*.csv"])])
-    GT = np.array(list(map(float,read_csv(grad_groundtruth))))
+        grad_measured = afn(key=f"Measured (csv): {key}",defaultextension=".csv",filetypes=[("CSV Files",["*.csv"])])
+        M = np.array(list(map(float,read_csv(grad_measured))))
+    else:
+        grad_groundtruth = afn(key=f"Ground Truth (Image): {key}")
+        im_groundtruth = imread(grad_groundtruth).T #groundtruth images are horizontal, let's fix that
+        
+        grad_measured = afn(key=f"Measured (Image): {key}")
+        im_measured = imread(grad_measured)
 
-    grad_measured = afn(key=f"Measured (csv): {key}",defaultextension=".csv",filetypes=[("CSV Files",["*.csv"])])
-    M = np.array(list(map(float,read_csv(grad_measured))))
-else:
-    grad_groundtruth = afn(key=f"Ground Truth (Image): {key}")
-    im_groundtruth = imread(grad_groundtruth).T #groundtruth images are horizontal, let's fix that
-    
-    grad_measured = afn(key=f"Measured (Image): {key}")
-    im_measured = imread(grad_measured)
-
-    GT = np.mean(im_groundtruth,axis=1) #take a full-width region for analysis
-    M = np.mean(im_measured,axis=1)[5:-5] #skip the ends because they're 0 for some reason
+        GT = np.mean(im_groundtruth,axis=1) #take a full-width region for analysis
+        M = np.mean(im_measured,axis=1)[5:-5] #skip the ends because they're 0 for some reason
 
 
 
@@ -169,13 +169,17 @@ def plt_params(xscale,offset):
 
     adj_Gx = adjusted_X(M_x,xscale,offset) #plot against adjusted X so x-values are in the ground truth space
     adj_Gy = adjusted_M(M_x,xscale,offset)
+
+    mm_factor = 900 / GT_x.shape[0] # millimeters per GT pixel
+    adj_Gx = adj_Gx*mm_factor
+
     plt.figure(figsize=(10,5),dpi=200)
     plt.plot(adj_Gx,adj_Gy,label="Theoretical")
     plt.plot(adj_Gx,M,label="Observed")
     plt.title(titles[key])
     plt.legend(loc="upper right")
 
-    plt.xlabel("Position (pixels) Relative to Theoretical")
+    plt.xlabel("Position (mm) Relative to Theoretical")
     plt.ylabel("Intensity")
     plt.show()
 
