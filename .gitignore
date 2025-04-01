@@ -20,3 +20,6 @@ local/**
 meta/**
 gcp_transfer_folder/**
 honors_thesis_output/**
+utils/filegetter.cache.bak
+utils/filegetter.cache.dat
+utils/filegetter.cache.dir
