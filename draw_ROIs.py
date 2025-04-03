@@ -2,8 +2,9 @@ from contextlib import contextmanager
 import datetime
 import io
 from pathlib import Path
-from typing import Any, Iterable, MutableMapping, TypeVar
+from typing import Any, Iterable, Literal, MutableMapping, TypeVar
 import matplotlib
+from matplotlib.offsetbox import AnchoredText
 import numpy as np
 from tqdm import tqdm
 from utils.CZI import ROI, extract_ROIs, draw_ROI, plot_ROI, read_czi
@@ -55,8 +56,8 @@ def stack_draw_ROI(pretty:np.ndarray,roi:ROI,thickness:float,color:tuple[float,f
     else:
         return np.array(res)
 
-def frameless_plot(figwidth,figheight,scale=100):
-    fig = plt.figure(frameon=False,figsize=(figwidth/scale,figheight/scale),dpi=scale)
+def frameless_plot(figwidth,figheight,dpiscale=100):
+    fig = plt.figure(frameon=False,figsize=(figwidth/dpiscale,figheight/dpiscale),dpi=dpiscale)
     ax = plt.Axes(fig, [0., 0., 1., 1.])
     ax.set_axis_off()
     fig.add_axes(ax)
@@ -78,7 +79,7 @@ class raster_matplotlib:
         w,h = im.shape[-2],im.shape[-3]
 
         # print(w,h)
-        fig,ax = frameless_plot(w,h,scale=100)
+        fig,ax = frameless_plot(w,h,dpiscale=100)
 
         ax.imshow(im)
 
@@ -156,7 +157,7 @@ def illustrator_compatible():
 
 
 
-
+PositionOption = Literal['best','upper right','upper left','lower left','lower right','right','center left','center right','lower center','upper center','center']
 
 if __name__ == "__main__":
     # with skip_cached_popups():
@@ -190,9 +191,19 @@ if __name__ == "__main__":
     rois = (extract_ROIs(f))
     im = read_czi(f)
 
-    crop:None|tuple[tuple[int|None,int|None],tuple[int|None,int|None]] = None
-    # crop = ((None,None),(None,128*5)) #xcrop, ycrop
+    # crop:None|tuple[tuple[int|None,int|None],tuple[int|None,int|None]] = None
+    crop = ((None,None),(None,128*5)) #xcrop, ycrop
     
+    if crop is not None:
+        c:list[tuple[int,int]] = []
+        for i,(low,high) in enumerate(crop):
+            axis = [-2,-3] #x:axis 1 of crop = third-to-last axis of image,y: axis 2 of crop = fourth-to-last axis of image
+            if low is None:
+                low = 0
+            if high is None:
+                high = im.shape[axis[i]]
+            c.append((low,high))
+        crop = (c[0],c[1])
     # font_scale *= 5/8 #make cropped text smaller
     
     p = prettify_movie(im,'neon green',0 if plc else 1)
@@ -217,16 +228,8 @@ if __name__ == "__main__":
                 sec = timedeltas[i] % 60
                 timestr = f"{min}:{sec:02.2f}"
 
-                if crop is not None:
-                    c = []
-                    for i,(low,high) in enumerate(crop):
-                        if low is None:
-                            low = 0
-                        if high is None:
-                            high = im.shape[i]
-                        c.append((low,high))
-                    ax.set_xlim(c[0])
-                    ax.set_ylim(c[1])
+                ax.set_xlim(crop[0])
+                ax.set_ylim(crop[1])
 
                 ax.text(10,im.shape[0]-10,timestr,horizontalalignment="left",verticalalignment="bottom",bbox=dict(facecolor="black",alpha=0.7),fontdict=dict(color="w",size=40*font_scale))
             return r.result;
@@ -254,7 +257,11 @@ if __name__ == "__main__":
                 if frames is not None and i not in frames:
                     continue
                 w,h = r.shape[-2],r.shape[-3]
-                f,ax = frameless_plot(w,h,scale=100)
+                if crop:
+                    w = crop[0][1] - crop[0][0]
+                    h = crop[1][1] - crop[1][0]
+
+                f,ax = frameless_plot(w,h,dpiscale=100)
                 
                 #show image
                 ax.imshow(r)
@@ -263,18 +270,32 @@ if __name__ == "__main__":
                 for R,T,C in roi_colors:
                     plot_ROI(ax,R,T,getcolor(C))
 
+                
+                
                 #draw scalebar
-                scale = ScaleBar(meta.PhysicalSizeX,meta.PhysicalSizeXUnit,color='w',box_alpha=0,fixed_value=25,fixed_units=meta.PhysicalSizeXUnit,font_properties={"size":30*font_scale});
+                scaleloc:PositionOption = "upper right"
+                scale = ScaleBar(meta.PhysicalSizeX,meta.PhysicalSizeXUnit,color='w',box_alpha=0,fixed_value=25,fixed_units=meta.PhysicalSizeXUnit,font_properties={"size":30*font_scale},location=scaleloc);
                 ax.add_artist(scale)
 
                 #draw timestamp
+                #valid strings: ['best','upper right','upper left','lower left','lower right','right','center left','center right','lower center','upper center','center']
+                textloc:PositionOption = "lower left"
                 min = int(timedeltas[i]/60)
                 sec = timedeltas[i] % 60
                 timestr = f"{min}:{sec:02.2f}"
-                ax.text(10,im.shape[-3]-10,timestr,horizontalalignment="left",verticalalignment="bottom",bbox=dict(facecolor="black",alpha=0.7),fontdict=dict(color="w",size=40*font_scale))
+                T = AnchoredText(timestr,textloc,pad=0.2,prop=dict(color="w",fontproperties=dict(size=30*font_scale))) #anchor text to the corner of the frame so zooming (cropping) keeps it there
+                #these set the background properties, you can just remove them if you want. I don't think the set_alpha works with postscript export
+                T.patch.set_color("black");
+                T.patch.set_alpha(0.7)
+                ax.add_artist(T)
 
                 out = outf/f"frame{i}.eps"
 
+                ax.set_xlim(crop[0])
+                ax.set_ylim((crop[1][1],crop[1][0])) #do y limit backwards to match image coordinates
+
+                from IPython import embed; embed()
+                plt.show()
                 f.savefig(out,bbox_inches='tight',pad_inches=0)
                 plt.close(f)
 
