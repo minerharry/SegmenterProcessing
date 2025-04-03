@@ -190,11 +190,9 @@ if __name__ == "__main__":
     rois = (extract_ROIs(f))
     im = read_czi(f)
 
-    crop = False
-    # crop = [slice(None,None),slice(None,128*5)] #crop image
-    if crop:
-        im = im[tuple(crop)]
-
+    crop:None|tuple[tuple[int|None,int|None],tuple[int|None,int|None]] = None
+    # crop = ((None,None),(None,128*5)) #xcrop, ycrop
+    
     # font_scale *= 5/8 #make cropped text smaller
     
     p = prettify_movie(im,'neon green',0 if plc else 1)
@@ -218,6 +216,17 @@ if __name__ == "__main__":
                 min = int(timedeltas[i]/60)
                 sec = timedeltas[i] % 60
                 timestr = f"{min}:{sec:02.2f}"
+
+                if crop is not None:
+                    c = []
+                    for i,(low,high) in enumerate(crop):
+                        if low is None:
+                            low = 0
+                        if high is None:
+                            high = im.shape[i]
+                        c.append((low,high))
+                    ax.set_xlim(c[0])
+                    ax.set_ylim(c[1])
 
                 ax.text(10,im.shape[0]-10,timestr,horizontalalignment="left",verticalalignment="bottom",bbox=dict(facecolor="black",alpha=0.7),fontdict=dict(color="w",size=40*font_scale))
             return r.result;
