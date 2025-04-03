@@ -1,7 +1,8 @@
 import tkinter as tk
 from tkinter import TclError, filedialog
 # from types import NoneType
-from typing import Callable, DefaultDict, ParamSpec, Sequence, TypeVar, IO, Type, overload
+from typing import Callable, DefaultDict, Sequence, TypeVar, IO, Type, Union, overload
+from typing_extensions import ParamSpec
 import shelve
 import os
 import contextlib as ctx
@@ -33,13 +34,13 @@ T = TypeVar("T")
 P = ParamSpec("P",)
 R = TypeVar("R",IO,str,Sequence[IO],Sequence[str])
 # result = 
-def cachewrap(f:Callable[P,R|None],blanktype:Type[T])->Callable[P,R|T]:
+def cachewrap(f:Callable[P,Union[R,None]],blanktype:Type[T])->Callable[P,Union[R,T]]:
 
     @overload
     def loc_cache(*args,allow_blank=False,**kwargs)->R: ...
     @overload
-    def loc_cache(*args,allow_blank=True,**kwargs)->R|T: ...
-    def loc_cache(*args,initialdir=None,initialfile=None,key=None,mangle_key=False,allow_blank=False,skip_popup=False,**kwargs)->R|T:
+    def loc_cache(*args,allow_blank=True,**kwargs)->Union[R,T]: ...
+    def loc_cache(*args,initialdir=None,initialfile=None,key=None,mangle_key=False,allow_blank=False,skip_popup=False,**kwargs)->Union[R,T]:
         import sys
         call_location = os.path.abspath(sys.argv[0])
         func_name = f.__name__

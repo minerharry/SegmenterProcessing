@@ -1,13 +1,14 @@
 from contextlib import contextmanager
+from datetime import timedelta
 import datetime
 import io
 from pathlib import Path
-from typing import Any, Iterable, MutableMapping, TypeVar
+from typing import Any, Iterable, MutableMapping
 import matplotlib
 import numpy as np
 from tqdm import tqdm
 from utils.CZI import ROI, extract_ROIs, draw_ROI, plot_ROI, read_czi
-from utils.filegetter import afn, skip_cached_popups, asksaveasfilename,adir
+from utils.filegetter import afn, skip_cached_popups, asksaveasfilename
 from utils.ome import OMEMetadata
 from utils.rescale import rescale,rescale_intensity
 from matplotlib.colors import XKCD_COLORS,hex2color
@@ -125,9 +126,7 @@ class raster_matplotlib:
 
 #     return scaled
 
-T = TypeVar("T")
-
-def subdict(d:MutableMapping[T,Any],fields:Iterable[T],strict=False):
+def subdict[T](d:MutableMapping[T,Any],fields:Iterable[T],strict=False):
     if strict:
         return {k:d[k] for k in fields}
     else:
@@ -142,17 +141,20 @@ def illustrator_compatible():
 
     oldpltparams = subdict(plt.rcParams,("pgf.preamble"))
 
-    # plt.rcParams.update({
-    # "pgf.preamble": [
-    #      "\\usepackage{arev}",
-    #     "\\usepackage[T1]{fontenc}"]
-    # })
+    plt.rcParams.update({
+    "pgf.preamble": [
+         "\\usepackage{arev}",
+        "\\usepackage[T1]{fontenc}"]
+    })
 
     yield
 
     matplotlib.rcParams.update(oldparams)
     plt.rcParams.update(oldpltparams)
     
+
+def 
+
 
 
 
@@ -187,27 +189,29 @@ if __name__ == "__main__":
     assert timeunit == 's'
     timedeltas = [float(time) + starttime for time in times]
 
+    if not double: #make all movies 5m
+        last_frame = np.min(np.where(np.array(timedeltas) > 300)[0])
+        assert timedeltas[last_frame-1] <= 300
+
     rois = (extract_ROIs(f))
     im = read_czi(f)
 
-    crop = False
-    # crop = [slice(None,None),slice(None,128*5)] #crop image
-    if crop:
-        im = im[tuple(crop)]
+    if not double:
+        im = im[:last_frame]
 
-    # font_scale *= 5/8 #make cropped text smaller
+    if not double and plc: #plc single image is much bigger, crop
+        #going for 5/8 the height
+        im = im[:,:128*5] #top 3/8, center 3/4
+        font_scale *= 5/8
     
     p = prettify_movie(im,'neon green',0 if plc else 1)
-    roi_colors:list[tuple[ROI,int,str|tuple[float,float,float]]] = [
-        (rois[0],3,'red'),   #first ROI
-        (rois[1],3,'yellow') #second ROI
-    ]
+    # roid = stack_draw_ROI(p,r[0],3,'red')
+    # roid = stack_draw_ROI(roid,r[0],3,'yellow')
+
     
 
     raster = False
-    if raster: #rasters to image and saves to video
-        for R,T,C in roi_colors:
-            p = stack_draw_ROI(p,R,T,C)
+    if raster:
 
         def add_m(i,im):
             r = raster_matplotlib(im) #this got... less pretty with needing to return a result
@@ -223,9 +227,9 @@ if __name__ == "__main__":
             return r.result;
                 
 
-        scaled = [add_m(i,r) for i,r in enumerate(tqdm(p,desc="adding annotations"))]
+        scaled = [add_m(i,r) for i,r in enumerate(tqdm(roid,desc="adding annotations"))]
 
-        out = asksaveasfilename(title="Save Movie");
+        out = asksaveasfilename();
         fps = 6 if double else 4
         from mediapy import write_video
 
@@ -233,41 +237,31 @@ if __name__ == "__main__":
 
 
     else:
-        # outf = Path("output/images/ROIs/")/Path(f).parent.name/Path(f).name
-        # outf.mkdir(parents=True,exist_ok=True)
+        outf = Path("output/images/ROIs/")/Path(f).parent.name/Path(f).name
+        outf.mkdir(parents=True,exist_ok=True)
+        
+        for i,r in enumerate(p):
+            w,h = r.shape[-2],r.shape[-3]
+            f,ax = frameless_plot(w,h,scale=100)
+            ax.imshow(r)
 
-        frames:None|list[int] = None #set to list of specific frame #s to only do those frames
+            plot_ROI(ax,rois[0],3,getcolor('yellow'))
 
-        outf = Path(adir(title="Folder to save frames"))
+            scale = ScaleBar(meta.PhysicalSizeX,meta.PhysicalSizeXUnit,color='w',box_alpha=0,fixed_value=25,fixed_units=meta.PhysicalSizeXUnit,font_properties={"size":30*font_scale});
+            ax.add_artist(scale)
 
-        with illustrator_compatible(): #set matplotlib saving params and such
-            for i,r in enumerate(tqdm(p)):
-                if frames is not None and i not in frames:
-                    continue
-                w,h = r.shape[-2],r.shape[-3]
-                f,ax = frameless_plot(w,h,scale=100)
-                
-                #show image
-                ax.imshow(r)
+            min = int(timedeltas[i]/60)
+            sec = timedeltas[i] % 60
+            timestr = f"{min}:{sec:02.2f}"
 
-                #draw ROIs
-                for R,T,C in roi_colors:
-                    plot_ROI(ax,R,T,getcolor(C))
+            ax.text(10,im.shape[-3]-10,timestr,horizontalalignment="left",verticalalignment="bottom",bbox=dict(facecolor="black",alpha=0.7),fontdict=dict(color="w",size=40*font_scale))
 
-                #draw scalebar
-                scale = ScaleBar(meta.PhysicalSizeX,meta.PhysicalSizeXUnit,color='w',box_alpha=0,fixed_value=25,fixed_units=meta.PhysicalSizeXUnit,font_properties={"size":30*font_scale});
-                ax.add_artist(scale)
+            # plt.show()
 
-                #draw timestamp
-                min = int(timedeltas[i]/60)
-                sec = timedeltas[i] % 60
-                timestr = f"{min}:{sec:02.2f}"
-                ax.text(10,im.shape[-3]-10,timestr,horizontalalignment="left",verticalalignment="bottom",bbox=dict(facecolor="black",alpha=0.7),fontdict=dict(color="w",size=40*font_scale))
+            out = outf/f"frame{i}.eps"
 
-                out = outf/f"frame{i}.eps"
-
-                f.savefig(out,bbox_inches='tight',pad_inches=0)
-                plt.close(f)
+            f.savefig(out,bbox_inches='tight',pad_inches=0)
+            plt.close(f)
 
     # import matplotlib.pyplot as plt
 

@@ -5,13 +5,14 @@ from typing import Collection
 import bioformats
 from bioformats import ImageReader
 import javabridge
+import matplotlib.patches
 import numpy as np
 from utils.filegetter import afn, skip_cached_popups
 from javabridge.wrappers import JWrapper
 from javabridge.jutil import to_string,iterate_collection
 import cv2 as cv
 
-from utils.ome import OMEMetadata
+# from utils.ome import OMEMetadata
 javabridge.start_vm(class_path=bioformats.JARS)
 
 ## ROI Format from this snippet of the extractZeissROIs code
@@ -224,4 +225,27 @@ def draw_ROI(im:np.ndarray,r:ROI,thickness:float,color:tuple[float,float,float])
         raise NotImplemented
 
     return im
-        
+
+#add as matplotlib artist
+from matplotlib.axes import Axes
+# import matplotlib.artist
+from matplotlib.patches import Rectangle, Ellipse, Circle
+def ROI_Artist(r:ROI,thickness:float,color:tuple[float,float,float],linestyle:str|None=None):
+    artist:matplotlib.patches.Patch
+    if isinstance(r,RectROI):
+        artist = Rectangle((r.Left,r.Top),r.Width,r.Height,angle=r.Rotation)
+    elif isinstance(r,EllipseROI):
+        artist = Ellipse((r.CenterX,r.CenterY),r.RadiusX,r.RadiusY,angle=r.Rotation)
+    elif isinstance(r,CircleROI):
+        artist = Circle((r.CenterX,r.CenterY),r.Radius)
+    else:
+        raise NotImplementedError(r)
+    
+    artist.set_edgecolor(color)
+    artist.set_linewidth(thickness)
+    artist.set_linestyle(linestyle)
+    return artist
+
+def plot_ROI(ax:Axes,r:ROI,thickness:float,color:tuple[float,float,float],linestyle:str|None=None):
+    ax.add_artist(ROI_Artist(r,thickness,color))
+    
