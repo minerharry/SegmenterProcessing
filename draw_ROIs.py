@@ -1,9 +1,11 @@
 from contextlib import contextmanager
 import datetime
 import io
+import math
 from pathlib import Path
 from typing import Any, Iterable, Literal, MutableMapping, TypeVar
 import matplotlib
+import matplotlib.axes
 from matplotlib.offsetbox import AnchoredText
 import numpy as np
 from tqdm import tqdm
@@ -14,6 +16,7 @@ from utils.rescale import rescale,rescale_intensity
 from matplotlib.colors import XKCD_COLORS,hex2color
 import matplotlib.pyplot as plt
 from matplotlib_scalebar.scalebar import ScaleBar
+from matplotlib.patches import Rectangle
 
 def getcolor(color:tuple[float,float,float]|str):
     if isinstance(color,str): color = hex2color(colors[color])
@@ -21,7 +24,7 @@ def getcolor(color:tuple[float,float,float]|str):
     # color = (color[0]*255,color[1]*255,color[2]*255)
 
 colors = {n.replace('xkcd:', ''): c for n, c in XKCD_COLORS.items()}
-def prettify_movie(stack:np.ndarray,color:tuple[float,float,float]|str,channel:int|None=None,im_hists:tuple[float,float]|None=(0.05,0.99),out_dtype:np.dtype=np.uint8):
+def prettify_movie(stack:np.ndarray,color:tuple[float,float,float]|str,channel:int|None=None,im_hists:tuple[float,float]|None=(0.05,0.99),out_dtype:np.dtype=np.uint8,invert_bg=False):
     if channel is None: assert stack.ndim != 4
     else: stack = stack[...,channel]
     if isinstance(color,str): color = hex2color(colors[color])
@@ -29,11 +32,29 @@ def prettify_movie(stack:np.ndarray,color:tuple[float,float,float]|str,channel:i
     if im_hists:
         stack = rescale(stack,*im_hists)
     
+    if invert_bg:
+        color = 1 - np.array(color)
     out = stack[...,None] * color
 
     out = rescale_intensity(out,(0,1),out_dtype)
 
+    if invert_bg:
+        out = 255 - out
+
     return out
+
+def annotate_kymograph(ax:matplotlib.axes.Axes,start_xy:tuple[float,float],end_xy:tuple[float,float],width:float,color:str|tuple[float,float,float],opacity:float=0.4):
+    line_dx = end_xy[0]-start_xy[0]
+    line_dy = end_xy[1]-start_xy[1]
+
+    degs = math.degrees(math.atan2(line_dy, line_dx))
+
+    length = float(np.linalg.norm([line_dx,line_dy]));
+    
+    patch = Rectangle((start_xy[0],width/2),length,width,angle=degs,facecolor=color,edgecolor=None,opacity=opacity)
+    ax.add_artist(patch)
+    return patch
+
 
 def stack_draw_ROI(pretty:np.ndarray,roi:ROI,thickness:float,color:tuple[float,float,float]|str):
     if not pretty.shape[-1]==3:
@@ -153,7 +174,8 @@ def illustrator_compatible():
 
     matplotlib.rcParams.update(oldparams)
     plt.rcParams.update(oldpltparams)
-    
+
+
 
 
 
@@ -172,7 +194,6 @@ if __name__ == "__main__":
 
 
     relative_starttime = None #if this movie is sequential (e.g. forward/backward ROI), set this to the inital start time of the earlier movie. 
-    #print(f"start time for movie {Path(f).name}: {meta.acquisition_date}") #get the iso formatted time of this movie
     
     # relative_starttime = datetime.datetime.fromisoformat('2024-10-09T19:59:06.903') #10.9 cell1_grad1
     # relative_starttime = datetime.datetime.fromisoformat('2024-09-25T01:07:30.593') #9.24 cell2_grad1
@@ -191,8 +212,11 @@ if __name__ == "__main__":
     rois = (extract_ROIs(f))
     im = read_czi(f)
 
-    # crop:None|tuple[tuple[int|None,int|None],tuple[int|None,int|None]] = None
-    crop = ((None,None),(None,128*5)) #xcrop, ycrop
+    #putting this down here so it's after all the java shit
+    print(f"start time for movie {Path(f).name}: {meta.acquisition_date}") #get the iso formatted time of this movie
+
+    crop:None|tuple[tuple[int|None,int|None],tuple[int|None,int|None]] = None
+    # crop = ((None,None),(None,128*5)) #xcrop, ycrop
     
     if crop is not None:
         c:list[tuple[int,int]] = []
@@ -206,7 +230,8 @@ if __name__ == "__main__":
         crop = (c[0],c[1])
     # font_scale *= 5/8 #make cropped text smaller
     
-    p = prettify_movie(im,'neon green',0 if plc else 1)
+    # p = prettify_movie(im,'neon green',0 if plc else 1,invert_bg=False)
+    p = prettify_movie(im,'black',0 if plc else 1,invert_bg=True)
     roi_colors:list[tuple[ROI,int,str|tuple[float,float,float]]] = [
         (rois[0],3,'red'),   #first ROI
         (rois[1],3,'yellow') #second ROI
@@ -221,7 +246,7 @@ if __name__ == "__main__":
         def add_m(i,im):
             r = raster_matplotlib(im) #this got... less pretty with needing to return a result
             with r() as ax:
-                scale = ScaleBar(meta.PhysicalSizeX,meta.PhysicalSizeXUnit,color='w',box_alpha=0,fixed_value=25,fixed_units=meta.PhysicalSizeXUnit,font_properties={"size":30*font_scale});
+                scale = ScaleBar(meta.PhysicalSizeX,meta.PhysicalSizeXUnit,color='w',box_alpha=0,fixed_value=20,fixed_units=meta.PhysicalSizeXUnit,font_properties={"size":30*font_scale});
                 ax.add_artist(scale)
 
                 min = int(timedeltas[i]/60)
@@ -249,6 +274,7 @@ if __name__ == "__main__":
         # outf.mkdir(parents=True,exist_ok=True)
 
         frames:None|list[int] = None #set to list of specific frame #s to only do those frames
+        frames = [33]
 
         outf = Path(adir(title="Folder to save frames"))
 
@@ -273,29 +299,30 @@ if __name__ == "__main__":
                 
                 
                 #draw scalebar
-                scaleloc:PositionOption = "upper right"
-                scale = ScaleBar(meta.PhysicalSizeX,meta.PhysicalSizeXUnit,color='w',box_alpha=0,fixed_value=25,fixed_units=meta.PhysicalSizeXUnit,font_properties={"size":30*font_scale},location=scaleloc);
+                scaleloc:PositionOption = "upper left"
+                scale = ScaleBar(meta.PhysicalSizeX,meta.PhysicalSizeXUnit,color='b',box_alpha=0,fixed_value=20,fixed_units=meta.PhysicalSizeXUnit,font_properties={"size":30*font_scale},location=scaleloc);
                 ax.add_artist(scale)
 
                 #draw timestamp
                 #valid strings: ['best','upper right','upper left','lower left','lower right','right','center left','center right','lower center','upper center','center']
-                textloc:PositionOption = "lower left"
-                min = int(timedeltas[i]/60)
+                textloc:PositionOption = "upper right"
+                mint = int(timedeltas[i]/60)
                 sec = timedeltas[i] % 60
-                timestr = f"{min}:{sec:02.2f}"
+                timestr = f"{mint}:{sec:02.2f}"
                 T = AnchoredText(timestr,textloc,pad=0.2,prop=dict(color="w",fontproperties=dict(size=30*font_scale))) #anchor text to the corner of the frame so zooming (cropping) keeps it there
                 #these set the background properties, you can just remove them if you want. I don't think the set_alpha works with postscript export
                 T.patch.set_color("black");
                 T.patch.set_alpha(0.7)
                 ax.add_artist(T)
 
-                out = outf/f"frame{i}.eps"
+                out = outf/f"frame{i}_{mint}m_{sec:02.2f}s.eps"
 
-                ax.set_xlim(crop[0])
-                ax.set_ylim((crop[1][1],crop[1][0])) #do y limit backwards to match image coordinates
+                if crop:
+                    ax.set_xlim(crop[0])
+                    ax.set_ylim((crop[1][1],crop[1][0])) #do y limit backwards to match image coordinates
 
-                from IPython import embed; embed()
-                plt.show()
+                # from IPython import embed; embed()
+                # plt.show()
                 f.savefig(out,bbox_inches='tight',pad_inches=0)
                 plt.close(f)
 
