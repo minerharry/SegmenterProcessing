@@ -9,6 +9,20 @@ from utils.filegetter import afn
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 
+def realign_polar_xticks(ax):
+    for theta, label in zip(ax.get_xticks(), ax.get_xticklabels()):
+        theta = theta * ax.get_theta_direction() + ax.get_theta_offset()
+        theta = np.pi/2 - theta
+        y, x = np.cos(theta), np.sin(theta)
+        if x >= 0.1:
+            label.set_horizontalalignment('left')
+        if x <= -0.1:
+            label.set_horizontalalignment('right')
+        if y >= 0.5:
+            label.set_verticalalignment('bottom')
+        if y <= -0.5:
+            label.set_verticalalignment('top')
+
 def plot_protrusion(analysis,draw_ROI = True,plot_type:Literal["scatter","surface"] = "surface"):
     analysis = Path(analysis)
 
@@ -17,7 +31,7 @@ def plot_protrusion(analysis,draw_ROI = True,plot_type:Literal["scatter","surfac
     data = loadmat(analysis)
     stats = data["CompStats"]
 
-    static_reference = False; #whether to use protareaTAM2 (static reference) or protareaTAM (dynamic reference). Will plot ROI angular locations accordingly
+    static_reference = True; #whether to use protareaTAM2 (static reference) or protareaTAM (dynamic reference). Will plot ROI angular locations accordingly
 
     # from IPython import embed; embed()
     # print(data)
@@ -38,9 +52,7 @@ def plot_protrusion(analysis,draw_ROI = True,plot_type:Literal["scatter","surfac
     # areamap_doubleROI = areamap_doubleROI[:,:360]
     print(protareamap_centroid.shape)
 
-
-
-    fig = plt.figure()
+    fig = plt.figure(figsize=(16,12))
     plt.suptitle(analysis.name)
     ncols,nrows = 2,2
 
@@ -52,20 +64,21 @@ def plot_protrusion(analysis,draw_ROI = True,plot_type:Literal["scatter","surfac
     ### ADJUST PROTRUSION MAP ANGLES SO THEY POINT IN THE SAME DIRECTION AS THE DELTA IMAGE
     firstframe = frames[0]-1
     lastframe = frames[1]-1
-    # protmap = np.pad(protmap,((firstframe-0,0),(0,0)),constant_values=0,)
-    # sprotmap = np.pad(sprotmap,((firstframe-0,0),(0,0)),constant_values=0)
+    protmap = np.pad(protmap,((firstframe-0,0),(0,0)),constant_values=0,)
+    sprotmap = np.pad(sprotmap,((firstframe-0,0),(0,0)),constant_values=0)
     # protareamap_centroid = np.pad(protareamap_centroid,((firstframe-0,0),(0,0)),constant_values=0)
-    from IPython import embed; embed()
+    # from IPython import embed; embed()
     dstats = stats["DoubleROIStats"][0,0]
     leading = dstats["LeadingRoi"][0,0]-1 #-1 because matlab indices
     leading_ROI_angle = dstats["ROIAngle"][0,0][firstframe,leading][0,0]
     # from IPython import embed; embed()
     ROI_angle_offset = leading_ROI_angle*np.pi/180
+    
 
     up = ROI_angle_offset #np.pi/2
     ROI_angle_offset = 0
     angles = np.linspace(- np.pi, + np.pi,360,endpoint=False)
-    maxR = 10
+    maxR = protmap.shape[0]
     r = np.linspace(0,maxR,protmap.shape[0])
     rdelta = np.diff(r)[0] #size of each radial bin
     assert np.allclose(rdelta,np.diff(r))
@@ -79,6 +92,7 @@ def plot_protrusion(analysis,draw_ROI = True,plot_type:Literal["scatter","surfac
         ax.set_title(name)
 
         ax.set_theta_offset(up)
+        ax.set_rlabel_position(-up*180/np.pi);
 
         colornorm = MidpointNormalize()
 
@@ -142,8 +156,8 @@ def plot_protrusion(analysis,draw_ROI = True,plot_type:Literal["scatter","surfac
                     color = bright_color if i==leading else dim_color
                     leftT = rangelist[firstframe:,0]
                     rightT = rangelist[firstframe:,0]
-                    leftT = np.pad(leftT,1,'edge');
-                    rightT = np.pad(rightT,1,'edge');
+                    # leftT = np.pad(leftT,1,'edge');
+                    # rightT = np.pad(rightT,1,'edge');
                     radii = [start] + r[firstframe:] + [end];
 
                     ax.plot(leftT,radii,linestyle='--',color=color);
