@@ -1,5 +1,7 @@
+from datetime import datetime
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Sequence
+from matplotlib import cm
 from matplotlib.projections import PolarAxes
 import numpy as np
 from scipy.io import loadmat
@@ -7,9 +9,12 @@ from divergentcolor import MidpointNormalize
 from utils.filegetter import afn
 
 import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle
+from matplotlib.patches import Polygon, Rectangle
 
-def realign_polar_xticks(ax):
+def roundto(x, base:float=5):
+    return base * round(x/base)
+
+def realign_polar_xticks(ax:PolarAxes):
     for theta, label in zip(ax.get_xticks(), ax.get_xticklabels()):
         theta = theta * ax.get_theta_direction() + ax.get_theta_offset()
         theta = np.pi/2 - theta
@@ -23,7 +28,16 @@ def realign_polar_xticks(ax):
         if y <= -0.5:
             label.set_verticalalignment('top')
 
-def plot_protrusion(analysis,draw_ROI = True,plot_type:Literal["scatter","surface"] = "surface"):
+CELL1_COLOR_RANGE = (-15.7903071218729,30.461424524784086)
+CELL1_COLOR_RANGE = (-30,30)
+
+def make_colorbar(cmap="seismic"):
+    colornorm = MidpointNormalize(*CELL1_COLOR_RANGE)
+    fig = plt.figure()
+    ax = fig.add_subplot()
+    fig.colorbar(cm.ScalarMappable(norm=colornorm, cmap=cmap),ax=ax,location="left")
+
+def plot_protrusion(analysis,draw_ROI = True,plot_type:Literal["scatter","surface"] = "surface",times:Sequence[datetime]|None=None):
     analysis = Path(analysis)
 
     mapname = "PVTAMF"
@@ -43,6 +57,9 @@ def plot_protrusion(analysis,draw_ROI = True,plot_type:Literal["scatter","surfac
 
     frames = stats["PSF"][0,0][0,0],stats["LSF"][0,0][0,0] #I hate matlab so much
 
+    # times = stats["TotalTS"][0,0]
+    # from IPython import embed; embed()
+
 
 
     protmap = protmap[:,:360] #this technically has 361*, I think so 0* is centered. We don't need that here so make it 360*
@@ -54,11 +71,12 @@ def plot_protrusion(analysis,draw_ROI = True,plot_type:Literal["scatter","surfac
 
     fig = plt.figure(figsize=(16,12))
     plt.suptitle(analysis.name)
-    ncols,nrows = 2,2
+    ncols,nrows = 2,1
 
     if draw_ROI:
         bright_color = "#6e00f4";
         dim_color = "#ff72ed";
+
     
 
     ### ADJUST PROTRUSION MAP ANGLES SO THEY POINT IN THE SAME DIRECTION AS THE DELTA IMAGE
@@ -76,6 +94,7 @@ def plot_protrusion(analysis,draw_ROI = True,plot_type:Literal["scatter","surfac
     
 
     up = ROI_angle_offset #np.pi/2
+    up = roundto(up,np.pi/2)
     ROI_angle_offset = 0
     angles = np.linspace(- np.pi, + np.pi,360,endpoint=False)
     maxR = protmap.shape[0]
@@ -84,21 +103,21 @@ def plot_protrusion(analysis,draw_ROI = True,plot_type:Literal["scatter","surfac
     assert np.allclose(rdelta,np.diff(r))
     assert np.allclose(angles[180],0)
 
+    print(np.min(protareamap_centroid),np.max(protareamap_centroid))
+    # exit()
 
-
-    for i,(prot,name) in enumerate(((protmap,"Prot Map"),(sprotmap,"Smoothed Prot Map"),(protareamap_centroid,"Delta Area Map"))):#,(areamap_doubleROI,"Delta Area Map - DoubleROI")):
+    maps = ((protmap,"Prot Map"),(sprotmap,"Smoothed Prot Map"),(protareamap_centroid,"Delta Area Map"))
+    for i,(prot,name) in enumerate(maps[2:]):#,(areamap_doubleROI,"Delta Area Map - DoubleROI")):
         print(prot.shape,name)
         ax:PolarAxes = fig.add_subplot(nrows,ncols,i+1,projection="polar")
-        ax.set_title(name)
+        ax.set_title(name,fontsize=24)
 
         ax.set_theta_offset(up)
         ax.set_rlabel_position(-up*180/np.pi);
 
-        colornorm = MidpointNormalize()
 
-        # ax.set_yticklabels([])
-        # ax.set_xticklabels([])
-        # ax.set_ylim((0,maxR))
+
+        colornorm = MidpointNormalize(*CELL1_COLOR_RANGE)
 
         if plot_type == "scatter":
             for rad,row in zip(r,prot):
@@ -139,16 +158,28 @@ def plot_protrusion(analysis,draw_ROI = True,plot_type:Literal["scatter","surfac
                     min = min*np.pi/180 + ROI_angle_offset
                     max = max*np.pi/180 + ROI_angle_offset
                     color = bright_color if i==leading else dim_color
+
+                    xpoints = []; ypoints = []
+
                     # from IPython import embed; embed()
-                    ax.plot([min,min],[start,end],linestyle='--',color=color);
-                    ax.plot([max,max],[start,end],linestyle='--',color=color);
+                    # ax.plot([min,min],[start,end],linestyle='-',color=color);
+                    # ax.plot([max,max],[start,end],linestyle='-',color=color);
                     
                     if min < max:
                         arcangles = np.linspace(min,max,100)
                     else:
                         arcangles = np.concatenate([np.linspace(min,np.pi + ROI_angle_offset,50),np.linspace(-np.pi+ROI_angle_offset,max,50)])
-                    ax.plot(arcangles,[end,]*100,linestyle='--',color=color);
-                    ax.plot(arcangles,[start,]*100,linestyle='--',color=color);
+                    # ax.plot(arcangles,[end,]*100,linestyle='--',color=color);
+                    # ax.plot(arcangles,[start,]*100,linestyle='--',color=color);
+                    cat = lambda *x: np.concatenate([*x])
+
+                    xpoints = cat(xpoints,[min,min]);       ypoints = cat(ypoints,[start,end])
+                    xpoints = cat(xpoints, arcangles);      ypoints = cat(ypoints,[end,]*100)
+                    xpoints = cat(xpoints,[max,max]);       ypoints = cat(ypoints,[end,start])
+                    xpoints = cat(xpoints,arcangles[::-1]); ypoints = cat(ypoints,[start,]*100)
+                    poly = Polygon(np.array(list(zip(xpoints,ypoints))),fill=False,linestyle='--',edgecolor=color,closed=True)
+                    ax.add_patch(poly)
+                    
             else:
                 
                 for i,rangelist in enumerate(ranges):
@@ -160,8 +191,8 @@ def plot_protrusion(analysis,draw_ROI = True,plot_type:Literal["scatter","surfac
                     # rightT = np.pad(rightT,1,'edge');
                     radii = [start] + r[firstframe:] + [end];
 
-                    ax.plot(leftT,radii,linestyle='--',color=color);
-                    ax.plot(rightT,radii,linestyle='--',color=color);
+                    # ax.plot(leftT,radii,linestyle='--',color=color);
+                    # ax.plot(rightT,radii,linestyle='--',color=color);
                     
                     upmin,upmax = rangelist[-1,0],rangelist[-1,1]
                     if upmin < upmax:
@@ -174,8 +205,32 @@ def plot_protrusion(analysis,draw_ROI = True,plot_type:Literal["scatter","surfac
                         downarcangles = np.linspace(downmin,downmax,100)
                     else:
                         downarcangles = np.concatenate([np.linspace(downmin,np.pi + ROI_angle_offset,50),np.linspace(-np.pi+ROI_angle_offset,downmax,50)])
-                    ax.plot(uparcangles,[end,]*100,linestyle='--',color=color);
-                    ax.plot(downarcangles,[start,]*100,linestyle='--',color=color);
+                    # ax.plot(uparcangles,[end,]*100,linestyle='--',color=color);
+                    # ax.plot(downarcangles,[start,]*100,linestyle='--',color=color);
+                    cat = lambda *x: np.concatenate([*x])
+    
+                    xpoints = []; ypoints = []
+                    xpoints = cat(xpoints,leftT);               ypoints = cat(ypoints,radii)
+                    xpoints = cat(xpoints,uparcangles);         ypoints = cat(ypoints,[end,]*100)
+                    xpoints = cat(xpoints,rightT)[::-1];        ypoints = cat(ypoints,radii[::-1])
+                    xpoints = cat(xpoints,downarcangles)[::-1]; ypoints = cat(ypoints,[start,]*100)
+
+                    poly = Polygon(np.array(zip(xpoints,ypoints)),fill=False,linestyle='--',edgecolor=color,closed=True)
+                    ax.add_patch(poly)
+
+        realign_polar_xticks(ax)
+        # for rtick in ax.get_yticklabels():
+        #     rtick.set_text(rtick.get_text() + ' seventeen') #add "minute" tick
+        #     rtick.set_fontsize('large')
+        ticks = [13,25,37] #frame#s of 10, 20, 30 minutes
+        if times:
+            ticklabels = [f"{(times[tick-1] - times[0]).seconds // 60}' " for tick in ticks]
+        else:
+            ticklabels = list(map(str,ticks))
+        ax.set_rgrids(ticks,ticklabels,ha="right",fontsize=18)
+        for ttick in ax.get_xticklabels():
+            ttick.set_fontsize(20)
+
 
     # from IPython import embed; embed()
 
@@ -197,7 +252,7 @@ def plot_protrusion(analysis,draw_ROI = True,plot_type:Literal["scatter","surfac
         for i,R in enumerate(rois):
             color = bright_color if i==leading else dim_color
             L,T,W,H = [x[0,0] for x in R[0,0]] #gonna murder matlab. Also TL are xy flipped because matplotlib
-            rect = Rectangle([T,L],W,H,linestyle="--",color=color)
+            rect = Rectangle([T,L],W,H,linestyle="--",edgecolor=color,fill=None)
             ax.add_artist(rect)
 
         # firstframe = frames[0]-1
@@ -226,18 +281,106 @@ def plot_protrusion(analysis,draw_ROI = True,plot_type:Literal["scatter","surfac
     return fig,ax
 
 if __name__ == "__main__":
-    analy = afn()
-    plot_protrusion(analy,draw_ROI=True)#,plot_type="scatter")
+    # analy = afn()
+    # plot_protrusion(analy,draw_ROI=True)#,plot_type="scatter")
 
-    from utils.filegetter import adir
-    def iter_all(d):
-        p = Path(d)
-        for k in p.glob("*.mat"):
-            print(k.name)
-            plot_protrusion(k)
-            plt.show()
+    # from utils.filegetter import adir
+    # def iter_all(d):
+    #     p = Path(d)
+    #     for k in p.glob("*.mat"):
+    #         print(k.name)
+    #         plot_protrusion(k)
+    #         plt.show()
 
-    from IPython import embed; embed()
+    # from IPython import embed; embed()
+
+    cell1_times = [
+        "09-Oct-2024 07:59:08.625 PM",
+        "09-Oct-2024 08:00:11.989 PM",
+        "09-Oct-2024 08:01:02.710 PM",
+        "09-Oct-2024 08:01:53.463 PM",
+        "09-Oct-2024 08:02:44.153 PM",
+        "09-Oct-2024 08:03:34.858 PM",
+        "09-Oct-2024 08:04:25.739 PM",
+        "09-Oct-2024 08:05:16.428 PM",
+        "09-Oct-2024 08:06:07.197 PM",
+        "09-Oct-2024 08:06:58.205 PM",
+        "09-Oct-2024 08:07:48.910 PM",
+        "09-Oct-2024 08:08:39.616 PM",
+        "09-Oct-2024 08:09:30.560 PM",
+        "09-Oct-2024 08:10:21.329 PM",
+        "09-Oct-2024 08:11:12.051 PM",
+        "09-Oct-2024 08:12:02.756 PM",
+        "09-Oct-2024 08:12:53.636 PM",
+        "09-Oct-2024 08:13:44.294 PM",
+        "09-Oct-2024 08:14:35.047 PM",
+        "09-Oct-2024 08:15:26.007 PM",
+        "09-Oct-2024 08:16:16.697 PM",
+        "09-Oct-2024 08:17:07.689 PM",
+        "09-Oct-2024 08:17:58.616 PM",
+        "09-Oct-2024 08:18:49.338 PM",
+        "09-Oct-2024 08:19:40.250 PM",
+        "09-Oct-2024 08:20:30.972 PM",
+        "09-Oct-2024 08:21:21.725 PM",
+        "09-Oct-2024 08:22:12.510 PM",
+        "09-Oct-2024 08:23:03.422 PM",
+        "09-Oct-2024 08:23:54.176 PM",
+        "09-Oct-2024 08:24:44.864 PM",
+        "09-Oct-2024 08:25:35.729 PM",
+        "09-Oct-2024 08:26:26.514 PM",
+        "09-Oct-2024 08:27:17.283 PM",
+        "09-Oct-2024 08:28:08.004 PM",
+        "09-Oct-2024 08:28:58.694 PM",
+        "09-Oct-2024 08:29:49.543 PM",
+    ]
+    cell2_times = [
+        "09-Oct-2024 08:40:52.615 PM",
+        "09-Oct-2024 08:41:55.868 PM",
+        "09-Oct-2024 08:42:46.589 PM",
+        "09-Oct-2024 08:43:37.374 PM",
+        "09-Oct-2024 08:44:28.079 PM",
+        "09-Oct-2024 08:45:18.832 PM",
+        "09-Oct-2024 08:46:09.522 PM",
+        "09-Oct-2024 08:47:00.197 PM",
+        "09-Oct-2024 08:47:50.854 PM",
+        "09-Oct-2024 08:48:41.608 PM",
+        "09-Oct-2024 08:49:32.503 PM",
+        "09-Oct-2024 08:50:23.209 PM",
+        "09-Oct-2024 08:51:13.961 PM",
+        "09-Oct-2024 08:52:04.698 PM",
+        "09-Oct-2024 08:52:55.453 PM",
+        "09-Oct-2024 08:53:46.141 PM",
+        "09-Oct-2024 08:54:36.910 PM",
+        "09-Oct-2024 08:55:27.680 PM",
+        "09-Oct-2024 08:56:18.401 PM",
+        "09-Oct-2024 08:57:09.091 PM",
+        "09-Oct-2024 08:57:59.796 PM",
+        "09-Oct-2024 08:58:50.533 PM",
+        "09-Oct-2024 08:59:41.270 PM",
+        "09-Oct-2024 09:00:32.055 PM",
+        "09-Oct-2024 09:01:22.762 PM",
+        "09-Oct-2024 09:02:13.499 PM",
+        "09-Oct-2024 09:03:04.236 PM",
+        "09-Oct-2024 09:03:55.020 PM",
+        "09-Oct-2024 09:04:45.805 PM",
+        "09-Oct-2024 09:05:36.528 PM",
+        "09-Oct-2024 09:06:27.186 PM",
+        "09-Oct-2024 09:07:17.842 PM",
+        "09-Oct-2024 09:08:08.802 PM",
+        "09-Oct-2024 09:08:59.555 PM",
+        "09-Oct-2024 09:09:50.293 PM",
+        "09-Oct-2024 09:10:41.015 PM",
+        "09-Oct-2024 09:11:31.704 PM",
+    ]
+
+    cell1_times = list(map(lambda s: datetime.strptime(s,"%d-%b-%Y %I:%M:%S.%f %p"),cell1_times))
+    cell2_times = list(map(lambda s: datetime.strptime(s,"%d-%b-%Y %I:%M:%S.%f %p"),cell2_times))
+
+    plot_protrusion(r"E:/Lab Data/doubleROI/Analysis/first_reanalyzed/10_9_cell1_grad1.mat",draw_ROI=True,times=cell1_times)
+    plot_protrusion(r"E:/Lab Data/doubleROI/Analysis/second_reanalyzed/10_9_cell1_grad2.mat",draw_ROI=True,times=cell2_times)
+    make_colorbar()
+
+    plt.show()
 
     # iter_all(adir())
 
