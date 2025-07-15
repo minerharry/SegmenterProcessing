@@ -274,7 +274,7 @@ if __name__ == "__main__":
         # outf.mkdir(parents=True,exist_ok=True)
 
         frames:None|list[int] = None #set to list of specific frame #s to only do those frames
-        frames = [33]
+        frames = [0,31,62]
 
         outf = Path(adir(title="Folder to save frames"))
 
